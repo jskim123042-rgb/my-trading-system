@@ -89,6 +89,7 @@ class TradingAgent:
         self._last_indicator_log_time = 0
         self._last_signal = None  # 마지막 신호 평가 결과 (지표 알림용)
         self._indicator_log_interval = 900  # 15분마다 지표 현황 로그
+        self._early_check_trade_id: str = ""  # early_direction 체크 완료된 trade id
         self._last_market_fetch_time = 0
         self._market_fetch_interval = 60   # 60초마다 OI/롱숏 REST 조회
         self._last_vol_profile_time = 0
@@ -288,6 +289,22 @@ class TradingAgent:
                                     f"score={_shadow_signal.score:.3f} | "
                                     f"SL={_shadow_signal.stop_loss} TP={_shadow_signal.take_profit}"
                                 )
+
+                    # ── 진입 후 첫 3봉(45분) 방향 체크 (early_direction) ──
+                    t = self.order_mgr.current_trade
+                    if t and t.id and t.id != self._early_check_trade_id:
+                        candles_since = (now - t.entry_time) / (15 * 60)
+                        if candles_since >= 3:
+                            self._early_check_trade_id = t.id
+                            if t.side == "buy":
+                                direction_ok = 1 if current_price > t.entry_price else 0
+                            else:
+                                direction_ok = 1 if current_price < t.entry_price else 0
+                            self.trade_logger.update_early_direction(t.id, direction_ok)
+                            logger.info(
+                                f"📊 early_direction | {'✅ 방향 맞음' if direction_ok else '❌ 역행중'} "
+                                f"| 진입가={t.entry_price:.1f} 현재가={current_price:.1f}"
+                            )
 
                     closed = self.order_mgr.check_position(current_price)
                     if closed:
@@ -517,6 +534,28 @@ class TradingAgent:
                     f"SL={signal.stop_loss} TP={signal.take_profit}"
                 )
 
+                # ── BB %B 계산 (진입 시 BB 내 위치 0=하단 1=상단) ──
+                _bb_pct_b = 0.5
+                try:
+                    from strategy.base import bollinger_bands as _bb_fn
+                    _bb_period = next(
+                        (s.get("params", {}).get("bb_period", 14)
+                         for s in self.config.strategy.get("active", [])
+                         if s["name"] == "breakout"), 14
+                    )
+                    _bb_std = next(
+                        (s.get("params", {}).get("bb_std", 1.5)
+                         for s in self.config.strategy.get("active", [])
+                         if s["name"] == "breakout"), 1.5
+                    )
+                    if len(closes) >= _bb_period:
+                        _bb_upper, _, _bb_lower = _bb_fn(closes, _bb_period, _bb_std)
+                        _bb_range = _bb_upper[-1] - _bb_lower[-1]
+                        if _bb_range > 0:
+                            _bb_pct_b = (current_price - _bb_lower[-1]) / _bb_range
+                except Exception:
+                    pass
+
                 # ── 포지션 사이징 ──
                 stats = self.order_mgr.get_stats()
                 amount = self.position_sizer.calculate_size(
@@ -590,6 +629,8 @@ class TradingAgent:
                         score_trend=signal.score_trend,
                         score_breakout=signal.score_breakout,
                         candle_body_pct=_candle_body_pct,
+                        bb_pct_b=round(_bb_pct_b, 4),
+                        div_bars_between=signal.div_bars_between,
                     )
                     await self.notifier.notify_entry(
                         side=trade.side,

@@ -32,6 +32,7 @@ class AggregatedSignal:
     div_grade: str = "none"      # A/B/C/D/E/none
     div_tf_count: int = 0        # 확인된 TF 수 (0~3)
     div_strength: int = 0        # 다이버전스 강도 (0~4)
+    div_bars_between: int = 0    # 다이버전스 피벗 간 봉 수
     cvd_confirmed: bool = False  # CVD 방향 일치 여부
     bb_squeeze: bool = False     # 볼린저 스퀴즈 후 진입 여부
     score_trend: float = 0.0     # trend_follow 개별 기여 점수
@@ -222,6 +223,7 @@ class SignalAggregator:
             div_grade=_trend_extra.get("div_grade", "none"),
             div_tf_count=_trend_extra.get("div_tf_count", 0),
             div_strength=_trend_extra.get("div_strength", 0),
+            div_bars_between=_trend_extra.get("div_bars_between", 0),
             cvd_confirmed=bool(_trend_extra.get("cvd_confirmed", False)),
             bb_squeeze=bool(_breakout_extra.get("bb_squeeze", False)),
             score_trend=round(_trend_score, 4),

@@ -121,7 +121,11 @@ class TradeLogger:
             entry_rsi_4h    REAL,           -- 진입 시 4h RSI
             score_trend     REAL,           -- trend_follow 개별 기여 점수
             score_breakout  REAL,           -- breakout 개별 기여 점수
-            candle_body_pct REAL            -- 진입 캔들 몸통 비율 (0~1, 강도 지표)
+            candle_body_pct REAL,           -- 진입 캔들 몸통 비율 (0~1, 강도 지표)
+            -- ── 최적화 로그 추가 ─────────────────────────────
+            bb_pct_b        REAL,           -- 진입 시 BB 위치 (0=하단, 1=상단)
+            div_bars_between INTEGER,       -- 다이버전스 피벗 간 봉 수
+            early_direction INTEGER         -- 진입 후 첫 3봉 방향 일치 (1=맞음, 0=역행, NULL=미확인)
         )
         """)
 
@@ -224,6 +228,9 @@ class TradeLogger:
                 "score_breakout REAL",
             ],
             "trades": [
+                "bb_pct_b REAL",
+                "div_bars_between INTEGER",
+                "early_direction INTEGER",
                 "entry_1h_trend TEXT",
                 "entry_4h_trend TEXT",
                 "entry_rsi_1h REAL",
@@ -403,6 +410,8 @@ class TradeLogger:
         score_trend: float = 0.0,
         score_breakout: float = 0.0,
         candle_body_pct: float = 0.0,
+        bb_pct_b: float = 0.0,
+        div_bars_between: int = 0,
     ):
         now = datetime.now(timezone.utc)
         sl_pct = abs(entry_price - stop_loss) / entry_price if entry_price else 0
@@ -423,8 +432,9 @@ class TradeLogger:
                  signal_price, slippage_pct,
                  div_grade, div_tf_count, div_strength, cvd_confirmed,
                  entry_bb_squeeze, entry_rsi_4h,
-                 score_trend, score_breakout, candle_body_pct)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 score_trend, score_breakout, candle_body_pct,
+                 bb_pct_b, div_bars_between)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade_id, now.isoformat(), side,
                 entry_price, amount, stop_loss, take_profit,
@@ -442,6 +452,7 @@ class TradeLogger:
                 div_grade, div_tf_count, div_strength, int(cvd_confirmed),
                 int(entry_bb_squeeze), entry_rsi_4h,
                 score_trend, score_breakout, candle_body_pct,
+                bb_pct_b, div_bars_between,
             ))
             self.conn.commit()
         except Exception as e:
@@ -543,6 +554,18 @@ class TradeLogger:
             self.conn.commit()
         except Exception as e:
             logger.error(f"거래량 프로파일 저장 실패: {e}")
+
+    # ── 진입 직후 첫 3봉 방향 업데이트 ─────────────────
+    def update_early_direction(self, trade_id: str, direction_ok: int):
+        """진입 후 3봉(45분) 지난 시점에 방향 일치 여부 기록 (1=맞음, 0=역행)"""
+        try:
+            self.conn.execute(
+                "UPDATE trades SET early_direction=? WHERE id=?",
+                (direction_ok, trade_id)
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.error(f"early_direction 업데이트 실패: {e}")
 
     # ── MFE/MAE 업데이트 (포지션 모니터링 중 매 틱) ──────
     def update_excursion(self, trade_id: str, mfe_pct: float, mae_pct: float, mfe_r: float = 0.0):

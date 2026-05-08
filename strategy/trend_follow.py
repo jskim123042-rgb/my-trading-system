@@ -57,24 +57,26 @@ def _detect_divergence(
     pivot_window: int = 5,
     max_lookback: int = 30,
     recency_bars: int = 10,
-) -> tuple[bool, bool, int]:
+) -> tuple[bool, bool, int, int]:
     """
     RSI 다이버전스 탐지 (v4 로직)
 
     Returns:
-        bull_signal  : 강세 다이버전스 여부
-        bear_signal  : 약세 다이버전스 여부
-        div_strength : 강도 0~4
+        bull_signal    : 강세 다이버전스 여부
+        bear_signal    : 약세 다이버전스 여부
+        div_strength   : 강도 0~4
+        bars_between   : 다이버전스를 구성한 두 피벗 간 봉 수 (0=미탐지)
     """
     n = len(closes)
     if n < pivot_window * 2 + 5:
-        return False, False, 0
+        return False, False, 0, 0
 
     pl = _find_pivot_lows(closes, pivot_window)
     ph = _find_pivot_highs(closes, pivot_window)
 
     bull_signal = bear_signal = False
     div_strength = 0
+    active_bars = 0
 
     # ── Bullish (저점 2개 비교) ───────────────────────────────────────────
     if len(pl) >= 2:
@@ -90,6 +92,7 @@ def _detect_divergence(
             if c_p < p_p and c_r > p_r and p_r < 40:
                 bull_signal  = True
                 div_strength = 2
+                active_bars  = bars_between
                 if c_r - p_r > 5: div_strength += 1   # RSI 격차 큼
                 if c_r < 30:      div_strength += 1   # 깊은 과매도
 
@@ -97,6 +100,7 @@ def _detect_divergence(
             elif c_p > p_p and c_r < p_r:
                 bull_signal  = True
                 div_strength = 1
+                active_bars  = bars_between
 
     # ── Bearish (고점 2개 비교) ───────────────────────────────────────────
     if len(ph) >= 2:
@@ -112,6 +116,7 @@ def _detect_divergence(
             if c_p > p_p and c_r < p_r and p_r > 60:
                 bear_signal  = True
                 div_strength = 2
+                active_bars  = bars_between
                 if p_r - c_r > 5: div_strength += 1
                 if c_r > 70:      div_strength += 1
 
@@ -119,8 +124,9 @@ def _detect_divergence(
             elif c_p < p_p and c_r > p_r:
                 bear_signal  = True
                 div_strength = 1
+                active_bars  = bars_between
 
-    return bull_signal, bear_signal, div_strength
+    return bull_signal, bear_signal, div_strength, active_bars
 
 
 # ── 의사 CVD (v4 calculate_pseudo_cvd 실시간 버전) ──────────────────────────
@@ -156,14 +162,14 @@ _TF_PARAMS = {
 
 def _check_tf(
     closes, highs, lows, volumes, rsi_period, tf_key, min_bars=40
-) -> tuple[bool, bool, int, bool, bool]:
+) -> tuple[bool, bool, int, bool, bool, int]:
     """
     단일 TF의 다이버전스 + CVD 확인
     closes[-1]은 현재 형성 중인 미완성 봉 → 피벗/RSI 계산에서 제외
-    Returns: (bull, bear, div_strength, cvd_bull, cvd_bear)
+    Returns: (bull, bear, div_strength, cvd_bull, cvd_bear, bars_between)
     """
     if closes is None or len(closes) < min_bars:
-        return False, False, 0, False, False
+        return False, False, 0, False, False, 0
 
     # 미완성 봉(현재 봉) 제거 → 확정된 캔들만 사용
     c = closes[:-1]
@@ -172,18 +178,18 @@ def _check_tf(
     v = volumes[:-1]
 
     if len(c) < min_bars:
-        return False, False, 0, False, False
+        return False, False, 0, False, False, 0
 
     p = _TF_PARAMS.get(tf_key, _TF_PARAMS["1h"])
     rsi_arr = rsi(c, rsi_period)
-    bull, bear, strength = _detect_divergence(
+    bull, bear, strength, bars_between = _detect_divergence(
         c, rsi_arr,
         pivot_window=p["pivot_window"],
         max_lookback=p["max_lookback"],
         recency_bars=p["recency_bars"],
     )
     cvd_bull, cvd_bear = _calc_pseudo_cvd(c, v, h, lo)
-    return bull, bear, strength, cvd_bull, cvd_bear
+    return bull, bear, strength, cvd_bull, cvd_bear, bars_between
 
 
 # ── 전략 클래스 ───────────────────────────────────────────────────────────────
@@ -233,7 +239,7 @@ class TrendFollowStrategy(BaseStrategy):
         ema_1h_trend = kwargs.get("ema_1h_trend", "unknown")
 
         # ── 각 TF 다이버전스 확인 ────────────────────────────────────────
-        bull_15m, bear_15m, str_15m, cvd_bull_15m, cvd_bear_15m = _check_tf(
+        bull_15m, bear_15m, str_15m, cvd_bull_15m, cvd_bear_15m, bars_15m = _check_tf(
             closes, highs, lows, volumes, rsi_period, "15m", min_bars_15m
         )
 
@@ -241,7 +247,7 @@ class TrendFollowStrategy(BaseStrategy):
         highs_1h   = kwargs.get("highs_1h")
         lows_1h    = kwargs.get("lows_1h")
         volumes_1h = kwargs.get("volumes_1h")
-        bull_1h, bear_1h, str_1h, cvd_bull_1h, cvd_bear_1h = _check_tf(
+        bull_1h, bear_1h, str_1h, cvd_bull_1h, cvd_bear_1h, bars_1h = _check_tf(
             closes_1h, highs_1h, lows_1h, volumes_1h, rsi_period, "1h"
         )
 
@@ -249,7 +255,7 @@ class TrendFollowStrategy(BaseStrategy):
         highs_4h   = kwargs.get("highs_4h")
         lows_4h    = kwargs.get("lows_4h")
         volumes_4h = kwargs.get("volumes_4h")
-        bull_4h, bear_4h, str_4h, cvd_bull_4h, cvd_bear_4h = _check_tf(
+        bull_4h, bear_4h, str_4h, cvd_bull_4h, cvd_bear_4h, bars_4h = _check_tf(
             closes_4h, highs_4h, lows_4h, volumes_4h, rsi_period, "4h"
         )
 
@@ -444,11 +450,20 @@ class TrendFollowStrategy(BaseStrategy):
             )
             reason_parts.append(tfs_checked)
 
+        # 다이버전스 피벗 간격: 발동된 가장 상위 TF 기준
+        if signal.value > 0:
+            _active_bars = bars_4h if bull_4h else (bars_1h if bull_1h else bars_15m)
+        elif signal.value < 0:
+            _active_bars = bars_4h if bear_4h else (bars_1h if bear_1h else bars_15m)
+        else:
+            _active_bars = 0
+
         # 분석용 부가 데이터
         extra = {
-            "div_grade":    div_grade,
-            "div_tf_count": active_tf_count,
-            "div_strength": active_strength,
+            "div_grade":        div_grade,
+            "div_tf_count":     active_tf_count,
+            "div_strength":     active_strength,
+            "div_bars_between": _active_bars,
             "cvd_confirmed": cvd_long if signal.value > 0 else (cvd_short if signal.value < 0 else False),
             # TF별 상세
             "bull_4h": bull_4h, "bear_4h": bear_4h, "str_4h": str_4h,
