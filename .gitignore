@@ -1,0 +1,21 @@
+# 데이터 및 로그 (용량 큼, 민감 정보)
+data/trades.db
+data/*.db
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

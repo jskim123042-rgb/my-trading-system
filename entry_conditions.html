@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>BTC 선물봇 — 진입 조건 시각화</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Segoe UI', sans-serif;
+    padding: 24px;
+  }
+  h1 { text-align: center; font-size: 20px; color: #58a6ff; margin-bottom: 28px; letter-spacing: 1px; }
+
+  /* ── 레이아웃 ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+  .full-width { grid-column: 1 / -1; }
+
+  /* ── 카드 ── */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #21262d;
+    padding-bottom: 8px;
+  }
+
+  /* ── TF 흐름도 ── */
+  .tf-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    justify-content: center;
+    flex-wrap: nowrap;
+  }
+  .tf-box {
+    background: #21262d;
+    border: 1.5px solid #30363d;
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align: center;
+    min-width: 100px;
+  }
+  .tf-box .tf-label { font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+  .tf-box .tf-name { font-size: 16px; font-weight: 700; color: #58a6ff; }
+  .tf-box .tf-detail { font-size: 10px; color: #6e7681; margin-top: 3px; }
+  .tf-arrow {
+    font-size: 20px;
+    color: #30363d;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+  .tf-box.primary { border-color: #58a6ff; background: #1c2333; }
+
+  /* ── 다이버전스 설명 ── */
+  .div-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .div-item {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .div-item .div-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .div-item .div-desc { font-size: 11px; color: #8b949e; line-height: 1.5; }
+  .bull { border-left: 3px solid #3fb950; }
+  .bear { border-left: 3px solid #f85149; }
+  .bull .div-title { color: #3fb950; }
+  .bear .div-title { color: #f85149; }
+
+  /* ── 캔들 SVG ── */
+  .candle-area {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    align-items: flex-end;
+    padding: 10px 0;
+  }
+  .candle-wrap { text-align: center; }
+  .candle-wrap .clabel { font-size: 10px; color: #8b949e; margin-top: 6px; }
+
+  /* ── 등급 테이블 ── */
+  .grade-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .grade-table th {
+    background: #21262d;
+    color: #8b949e;
+    font-weight: 600;
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 11px;
+  }
+  .grade-table td { padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  .grade-table tr:hover td { background: #1c2128; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-A { background: #1f4e2f; color: #3fb950; }
+  .badge-B { background: #1a3a5c; color: #58a6ff; }
+  .badge-C { background: #2d2a1a; color: #e3b341; }
+  .badge-D { background: #2a1e1e; color: #f0883e; }
+  .badge-E { background: #2a1e2a; color: #bc8cff; }
+  .conf-bar-wrap { display: flex; align-items: center; gap: 6px; }
+  .conf-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #30363d;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .conf-fill { height: 100%; border-radius: 3px; }
+
+  /* ── 점수 흐름 ── */
+  .score-flow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .score-box {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
+    min-width: 110px;
+  }
+  .score-box .s-label { font-size: 10px; color: #6e7681; margin-bottom: 3px; }
+  .score-box .s-val { font-size: 15px; font-weight: 700; }
+  .score-box .s-sub { font-size: 10px; color: #8b949e; margin-top: 2px; }
+  .op-sym { font-size: 18px; color: #58a6ff; font-weight: 700; padding: 0 2px; }
+  .score-box.result { border-color: #3fb950; background: #0f2318; }
+  .score-box.result .s-val { color: #3fb950; }
+  .score-box.trend { border-color: #58a6ff; }
+  .score-box.trend .s-val { color: #58a6ff; }
+  .score-box.brk { border-color: #e3b341; }
+  .score-box.brk .s-val { color: #e3b341; }
+
+  /* ── 필터 체인 ── */
+  .filter-chain {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 9px 14px;
+  }
+  .filter-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+  .filter-text { flex: 1; }
+  .filter-text .ft { font-size: 12px; font-weight: 600; color: #e6edf3; }
+  .filter-text .fd { font-size: 11px; color: #6e7681; margin-top: 1px; }
+  .filter-pass {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: #1f4e2f;
+    color: #3fb950;
+    flex-shrink: 0;
+  }
+  .filter-fail {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: #3d1a1a;
+    color: #f85149;
+    flex-shrink: 0;
+  }
+
+  /* ── SL/TP ── */
+  .sltp-visual {
+    position: relative;
+    height: 180px;
+    background: #0d1117;
+    border-radius: 8px;
+    border: 1px solid #21262d;
+    overflow: hidden;
+    margin-top: 10px;
+  }
+  .price-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    display: flex;
+    align-items: center;
+  }
+  .price-line .pl-label {
+    position: absolute;
+    right: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    transform: translateY(-50%);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .price-line .pl-dist {
+    position: absolute;
+    left: 10px;
+    font-size: 10px;
+    color: #8b949e;
+    white-space: nowrap;
+    transform: translateY(-50%);
+  }
+
+  /* ── 볼린저 브레이크아웃 조건 ── */
+  .bb-conditions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .bb-cond {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .bb-cond .bc-title { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+  .bb-cond .bc-item { font-size: 11px; color: #8b949e; line-height: 1.7; }
+  .bc-item span { color: #e6edf3; font-weight: 600; }
+
+  /* ── 최종 판단 ── */
+  .final-box {
+    background: linear-gradient(135deg, #0f2318 0%, #1a1a2e 100%);
+    border: 1.5px solid #3fb950;
+    border-radius: 10px;
+    padding: 20px 24px;
+    text-align: center;
+  }
+  .final-box h3 { font-size: 14px; color: #3fb950; margin-bottom: 14px; }
+  .final-conditions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .fc-item {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  .fc-item .fc-n { color: #8b949e; font-size: 10px; margin-bottom: 2px; }
+  .fc-item .fc-v { font-weight: 700; color: #58a6ff; }
+  .final-note { font-size: 11px; color: #6e7681; }
+
+  .section-gap { margin-top: 6px; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .tag-req { background: #1f4e2f; color: #3fb950; }
+  .tag-opt { background: #1a3a5c; color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<h1>📊 BTC/USDT 선물봇 — 포지션 진입 조건 시각화</h1>
+
+<div class="main-grid">
+
+  <!-- ① 타임프레임 구조 -->
+  <div class="card full-width">
+    <div class="card-title">① 멀티 타임프레임 구조 (데이터 흐름)</div>
+    <div class="tf-flow">
+      <div class="tf-box">
+        <div class="tf-label">대추세</div>
+        <div class="tf-name">4H</div>
+        <div class="tf-detail">신뢰도 최고<br>pivot_window=3</div>
+      </div>
+      <div class="tf-arrow">→</div>
+      <div class="tf-box">
+        <div class="tf-label">중간 추세</div>
+        <div class="tf-name">1H</div>
+        <div class="tf-detail">상위 필터<br>pivot_window=4</div>
+      </div>
+      <div class="tf-arrow">→</div>
+      <div class="tf-box primary">
+        <div class="tf-label">진입 판단 (Primary)</div>
+        <div class="tf-name">15M</div>
+        <div class="tf-detail">실제 진입 타이밍<br>pivot_window=5</div>
+      </div>
+      <div class="tf-arrow">→</div>
+      <div class="tf-box" style="border-color:#e3b341; background:#1e1c10;">
+        <div class="tf-label">보조 (Breakout)</div>
+        <div class="tf-name">BB</div>
+        <div class="tf-detail">볼린저 14기간<br>±1.5σ</div>
+      </div>
+    </div>
+    <div style="text-align:center; margin-top:10px; font-size:11px; color:#6e7681;">
+      상위 TF (4h &gt; 1h &gt; 15m) 순으로 신뢰도 가중 · <span style="color:#8b949e;">확정 봉만 사용 (현재 미완성 봉 제외)</span>
+    </div>
+  </div>
+
+  <!-- ② RSI 다이버전스 조건 -->
+  <div class="card">
+    <div class="card-title">② RSI 다이버전스 조건 (TF별 공통)</div>
+
+    <!-- 캔들 + RSI 시각화 -->
+    <div style="margin-bottom:14px;">
+      <svg width="100%" height="130" viewBox="0 0 480 130">
+        <!-- 배경 -->
+        <rect width="480" height="130" fill="#0d1117" rx="6"/>
+
+        <!-- LONG 다이버전스 (좌측) -->
+        <text x="90" y="16" fill="#3fb950" font-size="11" font-weight="bold" text-anchor="middle">🟢 강세 다이버전스 (LONG)</text>
+
+        <!-- 가격 캔들 -->
+        <line x1="40" y1="35" x2="40" y2="75" stroke="#3fb950" stroke-width="1.5"/>
+        <rect x="34" y="48" width="12" height="20" fill="#3fb950"/>
+        <line x1="100" y1="45" x2="100" y2="85" stroke="#3fb950" stroke-width="1.5"/>
+        <rect x="94" y="60" width="12" height="18" fill="#3fb950"/>
+
+        <!-- 가격 저점 연결 (LL) -->
+        <line x1="40" y1="68" x2="100" y2="78" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <text x="65" y="92" fill="#f85149" font-size="9" text-anchor="middle">가격 LL (낮아짐)</text>
+
+        <!-- RSI 라인 -->
+        <line x1="40" y1="115" x2="100" y2="105" stroke="#3fb950" stroke-width="2"/>
+        <circle cx="40" cy="115" r="3" fill="#f85149"/>
+        <circle cx="100" cy="105" r="3" fill="#3fb950"/>
+        <text x="65" y="128" fill="#3fb950" font-size="9" text-anchor="middle">RSI HL (높아짐) + RSI &lt; 40</text>
+
+        <!-- 화살표 표시 -->
+        <text x="135" y="70" fill="#3fb950" font-size="20" text-anchor="middle">↑</text>
+        <text x="135" y="85" fill="#3fb950" font-size="10" text-anchor="middle">LONG</text>
+
+        <!-- SHORT 다이버전스 (우측) -->
+        <text x="340" y="16" fill="#f85149" font-size="11" font-weight="bold" text-anchor="middle">🔴 약세 다이버전스 (SHORT)</text>
+
+        <!-- 가격 캔들 -->
+        <line x1="265" y1="35" x2="265" y2="75" stroke="#f85149" stroke-width="1.5"/>
+        <rect x="259" y="38" width="12" height="22" fill="#f85149"/>
+        <line x1="325" y1="25" x2="325" y2="68" stroke="#f85149" stroke-width="1.5"/>
+        <rect x="319" y="28" width="12" height="24" fill="#f85149"/>
+
+        <!-- 가격 고점 연결 (HH) -->
+        <line x1="265" y1="42" x2="325" y2="32" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <text x="290" y="80" fill="#3fb950" font-size="9" text-anchor="middle">가격 HH (높아짐)</text>
+
+        <!-- RSI 라인 -->
+        <line x1="265" y1="100" x2="325" y2="112" stroke="#f85149" stroke-width="2"/>
+        <circle cx="265" cy="100" r="3" fill="#3fb950"/>
+        <circle cx="325" cy="112" r="3" fill="#f85149"/>
+        <text x="290" y="128" fill="#f85149" font-size="9" text-anchor="middle">RSI LH (낮아짐) + RSI &gt; 60</text>
+
+        <!-- 화살표 표시 -->
+        <text x="368" y="70" fill="#f85149" font-size="20" text-anchor="middle">↓</text>
+        <text x="368" y="85" fill="#f85149" font-size="10" text-anchor="middle">SHORT</text>
+
+        <!-- 중앙 구분선 -->
+        <line x1="220" y1="15" x2="220" y2="125" stroke="#21262d" stroke-width="1" stroke-dasharray="4,3"/>
+      </svg>
+    </div>
+
+    <div class="div-grid">
+      <div class="div-item bull">
+        <div class="div-title">Regular Bullish (강세)</div>
+        <div class="div-desc">
+          • 가격: 저점 낮아짐 (LL)<br>
+          • RSI: 저점 높아짐 (HL)<br>
+          • 조건: 이전 RSI <span style="color:#e6edf3;">< 40</span><br>
+          • 강도 +1: RSI 격차 > 5<br>
+          • 강도 +1: RSI < 30 (깊은 과매도)
+        </div>
+      </div>
+      <div class="div-item bear">
+        <div class="div-title">Regular Bearish (약세)</div>
+        <div class="div-desc">
+          • 가격: 고점 높아짐 (HH)<br>
+          • RSI: 고점 낮아짐 (LH)<br>
+          • 조건: 이전 RSI <span style="color:#e6edf3;">> 60</span><br>
+          • 강도 +1: RSI 격차 > 5<br>
+          • 강도 +1: RSI > 70 (깊은 과매수)
+        </div>
+      </div>
+      <div class="div-item bull" style="border-left-color:#8b949e;">
+        <div class="div-title" style="color:#8b949e;">Hidden Bullish (상승추세 지속)</div>
+        <div class="div-desc">
+          • 가격: 저점 높아짐 (HL)<br>
+          • RSI: 저점 낮아짐 (LL)<br>
+          • 강도 1 (Regular보다 낮음)
+        </div>
+      </div>
+      <div class="div-item bear" style="border-left-color:#8b949e;">
+        <div class="div-title" style="color:#8b949e;">Hidden Bearish (하락추세 지속)</div>
+        <div class="div-desc">
+          • 가격: 고점 낮아짐 (LH)<br>
+          • RSI: 고점 높아짐 (HH)<br>
+          • 강도 1 (Regular보다 낮음)
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px; font-size:11px; color:#6e7681;">
+      피벗 탐지 조건: 3 ≤ 저점 간격 ≤ 30봉 · 마지막 피벗 이후 ≤ recency_bars 이내
+    </div>
+  </div>
+
+  <!-- ③ 진입 등급 -->
+  <div class="card">
+    <div class="card-title">③ 진입 등급 체계 (trend_follow)</div>
+    <table class="grade-table">
+      <thead>
+        <tr>
+          <th>등급</th>
+          <th>진입 조건</th>
+          <th>신뢰도</th>
+          <th>최종 점수</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-A">A급</span></td>
+          <td style="font-size:11px;">4h + 1h + 15m<br><span style="color:#6e7681;">+ CVD 확인 + EMA50 방향 일치</span></td>
+          <td>
+            <div class="conf-bar-wrap">
+              <span style="font-size:11px; color:#3fb950; width:32px;">0.95</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:95%; background:#3fb950;"></div></div>
+            </div>
+          </td>
+          <td style="color:#3fb950; font-size:12px; font-weight:700;">0.665</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-B">B급</span></td>
+          <td style="font-size:11px;">4h + 1h<br><span style="color:#6e7681;">상위 2 TF (핵심 진입)</span></td>
+          <td>
+            <div class="conf-bar-wrap">
+              <span style="font-size:11px; color:#58a6ff; width:32px;">0.82</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:82%; background:#58a6ff;"></div></div>
+            </div>
+          </td>
+          <td style="color:#58a6ff; font-size:12px; font-weight:700;">0.574</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-C">C급</span></td>
+          <td style="font-size:11px;">1h + 15m<br><span style="color:#6e7681;">하위 2 TF</span></td>
+          <td>
+            <div class="conf-bar-wrap">
+              <span style="font-size:11px; color:#e3b341; width:32px;">0.72</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:72%; background:#e3b341;"></div></div>
+            </div>
+          </td>
+          <td style="color:#e3b341; font-size:12px; font-weight:700;">0.504</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-D">D급</span></td>
+          <td style="font-size:11px;">4h 단독<br><span style="color:#6e7681;">1h/15m 미확인</span></td>
+          <td>
+            <div class="conf-bar-wrap">
+              <span style="font-size:11px; color:#f0883e; width:32px;">0.55</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:55%; background:#f0883e;"></div></div>
+            </div>
+          </td>
+          <td style="color:#f0883e; font-size:12px; font-weight:700;">0.385</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-E">E급</span></td>
+          <td style="font-size:11px;">15m 단독<br><span style="color:#6e7681;">CVD + EMA50 + 강도≥2 필수</span></td>
+          <td>
+            <div class="conf-bar-wrap">
+              <span style="font-size:11px; color:#bc8cff; width:32px;">0.60</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:60%; background:#bc8cff;"></div></div>
+            </div>
+          </td>
+          <td style="color:#bc8cff; font-size:12px; font-weight:700;">0.420</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px; font-size:11px; color:#6e7681; text-align:right;">
+      최종 점수 = 신뢰도 × 가중치(0.7) · 임계값 <span style="color:#e6edf3;">±0.32</span> 초과 시 진입
+    </div>
+  </div>
+
+  <!-- ④ 추가 필터 조건 -->
+  <div class="card">
+    <div class="card-title">④ 추가 필터 조건 (차단 조건)</div>
+    <div class="filter-chain">
+
+      <div class="filter-row">
+        <div class="filter-icon">📊</div>
+        <div class="filter-text">
+          <div class="ft">거래량 필터</div>
+          <div class="fd">최근 21봉 중앙값 대비 현재 거래량 < 0.5x → 중립 처리</div>
+        </div>
+        <span class="filter-fail">차단</span>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-icon">📈</div>
+        <div class="filter-text">
+          <div class="ft">1h EMA 방향 필터 (롱)</div>
+          <div class="fd">1h EMA9 &lt; EMA26 (하락 추세) 상태에서 롱 진입 불가</div>
+        </div>
+        <span class="filter-fail">차단</span>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-icon">📉</div>
+        <div class="filter-text">
+          <div class="ft">1h EMA 방향 필터 (숏)</div>
+          <div class="fd">1h EMA9 &gt; EMA26 (상승 추세) 상태에서 숏 진입 불가</div>
+        </div>
+        <span class="filter-fail">차단</span>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-icon">💡</div>
+        <div class="filter-text">
+          <div class="ft">CVD (의사 누적거래량 델타)</div>
+          <div class="fd">A급 진입 시 CVD 방향 불일치 → STRONG_LONG → LONG 등급 하향</div>
+        </div>
+        <span class="filter-pass">보조</span>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-icon">📏</div>
+        <div class="filter-text">
+          <div class="ft">EMA50 방향 (15m)</div>
+          <div class="fd">A급·E급: 가격이 EMA50 방향 불일치 시 진입 불가</div>
+        </div>
+        <span class="filter-fail">차단</span>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-icon">🔒</div>
+        <div class="filter-text">
+          <div class="ft">드로다운 가드</div>
+          <div class="fd">일간 손실 5% 초과 · 3연패 후 60분 쿨다운 · 일 10회 거래 한도</div>
+        </div>
+        <span class="filter-fail">차단</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ⑤ 볼린저 브레이크아웃 (보조) -->
+  <div class="card">
+    <div class="card-title">⑤ Breakout 전략 조건 (보조, 가중치 0.3)</div>
+    <div class="bb-conditions">
+      <div class="bb-cond">
+        <div class="bc-title" style="color:#3fb950;">🟢 LONG 브레이크아웃</div>
+        <div class="bc-item">
+          1. 종가 &gt; 볼린저 <span>상단(14, 1.5σ)</span><br>
+          &nbsp;&nbsp;&nbsp;(전봉은 상단 이하)<br>
+          2. 거래량 &gt; 20봉 평균 <span>× 1.2배</span><br>
+          3. 현재가 &gt; 피보나치 <span>0.382</span>
+        </div>
+      </div>
+      <div class="bb-cond">
+        <div class="bc-title" style="color:#f85149;">🔴 SHORT 브레이크아웃</div>
+        <div class="bc-item">
+          1. 종가 &lt; 볼린저 <span>하단(14, 1.5σ)</span><br>
+          &nbsp;&nbsp;&nbsp;(전봉은 하단 이상)<br>
+          2. 거래량 &gt; 20봉 평균 <span>× 1.2배</span><br>
+          3. 현재가 &lt; 피보나치 <span>0.618</span>
+        </div>
+      </div>
+      <div class="bb-cond" style="grid-column: 1/-1;">
+        <div class="bc-title" style="color:#e3b341;">⚡ 볼린저 스퀴즈 보너스</div>
+        <div class="bc-item">
+          밴드폭이 최근 50봉 하위 <span>20%</span> 미만 상태에서 돌파 시<br>
+          신뢰도 <span>0.7 → 0.85</span> 상향 · 단독으로는 최대 점수 0.255 (임계값 0.32 미달, 단독 진입 불가)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑥ 가중 합산 점수 -->
+  <div class="card">
+    <div class="card-title">⑥ 최종 가중 합산 점수 계산</div>
+
+    <div class="score-flow">
+      <div class="score-box trend">
+        <div class="s-label">TrendFollow 점수</div>
+        <div class="s-val">signal × conf</div>
+        <div class="s-sub">가중치 × 0.7</div>
+      </div>
+      <div class="op-sym">+</div>
+      <div class="score-box brk">
+        <div class="s-label">Breakout 점수</div>
+        <div class="s-val">signal × conf</div>
+        <div class="s-sub">가중치 × 0.3</div>
+      </div>
+      <div class="op-sym">÷</div>
+      <div class="score-box" style="border-color:#8b949e;">
+        <div class="s-label">active_weight</div>
+        <div class="s-val">정규화</div>
+        <div class="s-sub">시그널 낸 전략만</div>
+      </div>
+      <div class="op-sym">=</div>
+      <div class="score-box result">
+        <div class="s-label">final_score</div>
+        <div class="s-val">-1.0 ~ +1.0</div>
+        <div class="s-sub">임계값 ±0.32</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <svg width="100%" height="50" viewBox="0 0 500 50">
+        <rect width="500" height="50" fill="#0d1117" rx="6"/>
+        <!-- 축 -->
+        <line x1="20" y1="25" x2="480" y2="25" stroke="#30363d" stroke-width="1"/>
+        <!-- 중앙 -->
+        <line x1="250" y1="10" x2="250" y2="40" stroke="#6e7681" stroke-width="1.5"/>
+        <text x="250" y="47" fill="#6e7681" font-size="9" text-anchor="middle">0</text>
+        <!-- SHORT 임계값 -->
+        <line x1="122" y1="10" x2="122" y2="40" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <text x="122" y="8" fill="#f85149" font-size="9" text-anchor="middle">-0.32</text>
+        <!-- LONG 임계값 -->
+        <line x1="378" y1="10" x2="378" y2="40" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <text x="378" y="8" fill="#3fb950" font-size="9" text-anchor="middle">+0.32</text>
+        <!-- SHORT 구역 -->
+        <rect x="20" y="18" width="102" height="14" fill="#3d1a1a" rx="2"/>
+        <text x="71" y="28" fill="#f85149" font-size="9" text-anchor="middle" font-weight="bold">SHORT 진입</text>
+        <!-- NEUTRAL 구역 -->
+        <rect x="122" y="18" width="256" height="14" fill="#1c2128" rx="2"/>
+        <text x="250" y="28" fill="#6e7681" font-size="9" text-anchor="middle">중립 (대기)</text>
+        <!-- LONG 구역 -->
+        <rect x="378" y="18" width="102" height="14" fill="#0f2318" rx="2"/>
+        <text x="429" y="28" fill="#3fb950" font-size="9" text-anchor="middle" font-weight="bold">LONG 진입</text>
+        <!-- 예시 점수들 -->
+        <circle cx="410" cy="25" r="4" fill="#3fb950"/>
+        <text x="410" y="47" fill="#3fb950" font-size="8" text-anchor="middle">B급(0.574)</text>
+        <circle cx="383" cy="25" r="3" fill="#f0883e"/>
+        <text x="395" y="47" fill="#f0883e" font-size="8" text-anchor="middle">D급(0.385)</text>
+        <!-- -1, +1 라벨 -->
+        <text x="20" y="47" fill="#6e7681" font-size="9" text-anchor="middle">-1.0</text>
+        <text x="480" y="47" fill="#6e7681" font-size="9" text-anchor="middle">+1.0</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ⑦ SL/TP -->
+  <div class="card">
+    <div class="card-title">⑦ 손절(SL) / 익절(TP) 계산</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+
+      <!-- LONG SL/TP -->
+      <div>
+        <div style="font-size:12px; color:#3fb950; font-weight:700; margin-bottom:6px;">🟢 LONG 포지션</div>
+        <div class="sltp-visual">
+          <!-- TP 라인 (상단) -->
+          <div class="price-line" style="top: 15%; background: #3fb950; opacity:0.6;">
+            <div class="pl-label" style="color:#3fb950; background:#0f2318;">TP = 진입 + ATR×1.5×3.0</div>
+            <div class="pl-dist" style="color:#3fb950;">+4.5R</div>
+          </div>
+          <!-- 진입가 -->
+          <div class="price-line" style="top: 50%; background: #58a6ff; opacity:0.9;">
+            <div class="pl-label" style="color:#58a6ff; background:#1c2333;">진입가 (현재가)</div>
+          </div>
+          <!-- SL 라인 (하단) -->
+          <div class="price-line" style="top: 83%; background: #f85149; opacity:0.6;">
+            <div class="pl-label" style="color:#f85149; background:#3d1a1a;">SL = 진입 − ATR×1.5</div>
+            <div class="pl-dist" style="color:#f85149;">−1R</div>
+          </div>
+          <!-- 영역 표시 -->
+          <div style="position:absolute; left:0; top:15%; bottom:50%; background:rgba(63,185,80,0.07);"></div>
+          <div style="position:absolute; left:0; top:50%; bottom:17%; background:rgba(248,81,73,0.07);"></div>
+          <!-- RR 표시 -->
+          <div style="position:absolute; right:50%; top:30%; font-size:22px; color:#3fb950; font-weight:900; transform:translateX(50%);">1:3</div>
+        </div>
+      </div>
+
+      <!-- SHORT SL/TP -->
+      <div>
+        <div style="font-size:12px; color:#f85149; font-weight:700; margin-bottom:6px;">🔴 SHORT 포지션</div>
+        <div class="sltp-visual">
+          <!-- SL 라인 (상단) -->
+          <div class="price-line" style="top: 15%; background: #f85149; opacity:0.6;">
+            <div class="pl-label" style="color:#f85149; background:#3d1a1a;">SL = 진입 + ATR×1.5</div>
+            <div class="pl-dist" style="color:#f85149;">−1R</div>
+          </div>
+          <!-- 진입가 -->
+          <div class="price-line" style="top: 50%; background: #58a6ff; opacity:0.9;">
+            <div class="pl-label" style="color:#58a6ff; background:#1c2333;">진입가 (현재가)</div>
+          </div>
+          <!-- TP 라인 (하단) -->
+          <div class="price-line" style="top: 83%; background: #3fb950; opacity:0.6;">
+            <div class="pl-label" style="color:#3fb950; background:#0f2318;">TP = 진입 − ATR×1.5×3.0</div>
+            <div class="pl-dist" style="color:#3fb950;">+4.5R</div>
+          </div>
+          <!-- 영역 표시 -->
+          <div style="position:absolute; left:0; top:15%; bottom:50%; background:rgba(248,81,73,0.07);"></div>
+          <div style="position:absolute; left:0; top:50%; bottom:17%; background:rgba(63,185,80,0.07);"></div>
+          <!-- RR 표시 -->
+          <div style="position:absolute; right:50%; top:30%; font-size:22px; color:#3fb950; font-weight:900; transform:translateX(50%);">1:3</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px; font-size:11px; color:#6e7681; line-height:1.8;">
+      <span style="color:#e3b341;">⚡ 트레일링 스탑:</span> 1R 수익 달성 시 활성화 → 고점(롱)/저점(숏) 대비 <span style="color:#e6edf3;">1.5%</span> 후퇴 시 청산<br>
+      <span style="color:#f0883e;">🚨 비상 손절:</span> 가격 <span style="color:#e6edf3;">3%</span> 역방향 이동 시 즉시 청산 (ATR-SL 전에 추가 안전장치)<br>
+      <span style="color:#8b949e;">📐 포지션 크기:</span> ATR-SL 기준 계좌의 <span style="color:#e6edf3;">2%</span>만 리스크 · 최대 증거금 <span style="color:#e6edf3;">40%</span> 캡
+    </div>
+  </div>
+
+  <!-- ⑧ 진입까지의 전체 흐름 -->
+  <div class="card full-width">
+    <div class="card-title">⑧ 포지션 진입까지 전체 의사결정 흐름</div>
+    <div style="overflow-x:auto;">
+      <svg width="1200" height="90" viewBox="0 0 1200 90">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/>
+          </marker>
+          <marker id="arr-r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#f85149"/>
+          </marker>
+        </defs>
+
+        <!-- 박스들 -->
+        <rect x="10" y="25" width="110" height="40" rx="6" fill="#1c2333" stroke="#58a6ff" stroke-width="1.5"/>
+        <text x="65" y="42" fill="#58a6ff" font-size="10" text-anchor="middle" font-weight="bold">데이터 수집</text>
+        <text x="65" y="56" fill="#6e7681" font-size="9" text-anchor="middle">15m/1h/4h 캔들</text>
+
+        <line x1="120" y1="45" x2="148" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="150" y="25" width="120" height="40" rx="6" fill="#1c2333" stroke="#58a6ff" stroke-width="1.5"/>
+        <text x="210" y="42" fill="#58a6ff" font-size="10" text-anchor="middle" font-weight="bold">RSI 다이버전스</text>
+        <text x="210" y="56" fill="#6e7681" font-size="9" text-anchor="middle">4h + 1h + 15m 확인</text>
+
+        <line x1="270" y1="45" x2="298" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="300" y="25" width="120" height="40" rx="6" fill="#1c2333" stroke="#58a6ff" stroke-width="1.5"/>
+        <text x="360" y="42" fill="#58a6ff" font-size="10" text-anchor="middle" font-weight="bold">등급 결정</text>
+        <text x="360" y="56" fill="#6e7681" font-size="9" text-anchor="middle">A/B/C/D/E/없음</text>
+
+        <line x1="420" y1="45" x2="448" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="450" y="25" width="120" height="40" rx="6" fill="#1c2333" stroke="#e3b341" stroke-width="1.5"/>
+        <text x="510" y="42" fill="#e3b341" font-size="10" text-anchor="middle" font-weight="bold">BB 브레이크아웃</text>
+        <text x="510" y="56" fill="#6e7681" font-size="9" text-anchor="middle">거래량 + 피보나치</text>
+
+        <line x1="570" y1="45" x2="598" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="600" y="25" width="120" height="40" rx="6" fill="#1c2333" stroke="#58a6ff" stroke-width="1.5"/>
+        <text x="660" y="42" fill="#58a6ff" font-size="10" text-anchor="middle" font-weight="bold">가중 합산</text>
+        <text x="660" y="56" fill="#6e7681" font-size="9" text-anchor="middle">score ≥ ±0.32?</text>
+
+        <line x1="720" y1="45" x2="748" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="750" y="25" width="130" height="40" rx="6" fill="#1c2333" stroke="#8b949e" stroke-width="1.5"/>
+        <text x="815" y="42" fill="#8b949e" font-size="10" text-anchor="middle" font-weight="bold">추가 필터</text>
+        <text x="815" y="56" fill="#6e7681" font-size="9" text-anchor="middle">거래량·EMA·드로다운</text>
+
+        <line x1="880" y1="45" x2="908" y2="45" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <rect x="910" y="25" width="120" height="40" rx="6" fill="#1c2333" stroke="#8b949e" stroke-width="1.5"/>
+        <text x="970" y="42" fill="#8b949e" font-size="10" text-anchor="middle" font-weight="bold">동적 레버리지</text>
+        <text x="970" y="56" fill="#6e7681" font-size="9" text-anchor="middle">ATR 기반 5x~12x</text>
+
+        <line x1="1030" y1="45" x2="1058" y2="45" stroke="#3fb950" stroke-width="2" marker-end="url(#arr)"/>
+
+        <rect x="1060" y="20" width="130" height="50" rx="6" fill="#0f2318" stroke="#3fb950" stroke-width="2"/>
+        <text x="1125" y="40" fill="#3fb950" font-size="11" text-anchor="middle" font-weight="bold">진입 실행</text>
+        <text x="1125" y="54" fill="#6e7681" font-size="9" text-anchor="middle">시장가 + TP/SL 동시</text>
+        <text x="1125" y="65" fill="#6e7681" font-size="9" text-anchor="middle">등록 (서버사이드)</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ⑨ 최종 요약 -->
+  <div class="card full-width">
+    <div class="final-box">
+      <h3>✅ 진입 발동 최소 조건 요약</h3>
+      <div class="final-conditions">
+        <div class="fc-item">
+          <div class="fc-n">① RSI 다이버전스</div>
+          <div class="fc-v">최소 1개 TF 확인</div>
+        </div>
+        <div class="fc-item">
+          <div class="fc-n">② 가중 점수</div>
+          <div class="fc-v">≥ 0.32 (또는 ≤ −0.32)</div>
+        </div>
+        <div class="fc-item">
+          <div class="fc-n">③ 1h EMA 방향</div>
+          <div class="fc-v">역방향 아닐 것</div>
+        </div>
+        <div class="fc-item">
+          <div class="fc-n">④ 거래량</div>
+          <div class="fc-v">중앙값 0.5배 이상</div>
+        </div>
+        <div class="fc-item">
+          <div class="fc-n">⑤ 드로다운</div>
+          <div class="fc-v">일 손실 5% 미만</div>
+        </div>
+        <div class="fc-item">
+          <div class="fc-n">⑥ 포지션</div>
+          <div class="fc-v">기존 포지션 없을 것</div>
+        </div>
+      </div>
+      <div class="final-note">
+        breakout 단독 최대 점수 = 0.85 × 0.3 = 0.255 &lt; 0.32 → breakout만으론 절대 진입 불가 · trend_follow 다이버전스가 반드시 필요
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="text-align:center; margin-top:20px; font-size:10px; color:#30363d;">
+  data/trades.db · config/settings.yaml · strategy/trend_follow.py · strategy/breakout.py · strategy/aggregator.py
+</div>
+
+</body>
+</html>

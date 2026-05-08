@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tasklist //FI \"IMAGENAME eq python.exe\")",
+      "Bash(PYTHONPATH=. python -m pytest tests/test_analysis_engine.py -v)",
+      "Bash(npm --version)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(curl -s \"http://localhost:8080/diagnose/app-01\")",
+      "Bash(python -c ' *)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -m pip show ccxt)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -X POST http://localhost:3456/api/attendance -H 'Content-Type: application/json' -d '{\"studentId\":2,\"action\":\"checkIn\"}')",
+      "Bash(curl -s http://localhost:3456/api/attendance?date=2026-04-27)",
+      "Bash(powershell -Command ' *)",
+      "Bash(node \"C:\\\\Users\\\\kiji1\\\\Downloads\\\\tutor-app\\\\rename-shortcut.js\")",
+      "Bash(powershell -Command \"Get-WmiObject Win32_Process -Filter 'CommandLine like \\\\\"%main.py%\\\\\"' | Select-Object ProcessId | Format-List\")",
+      "Bash(powershell -Command \"Get-WmiObject Win32_Process -Filter 'CommandLine like \\\\\"%main.py%\\\\\"' | Select-Object ProcessId,CommandLine | Format-List\")",
+      "Bash(tasklist /FI \"IMAGENAME eq python.exe\" /FO CSV)",
+      "Bash(wmic process *)"
+    ]
+  }
+}

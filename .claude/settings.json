@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"http://localhost:8080/query?q=db+%EC%84%9C%EB%B2%84+%EC%9E%A5%EC%95%A0+%ED%99%95%EC%9D%B8\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['report_text']\\)\")",
+      "Bash(curl -s \"http://localhost:8080/query?q=web-01+%EC%9D%B4%EC%83%81%ED%95%B4\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /PID 2244 /F)",
+      "Bash(cmd //c \"taskkill /PID 2244 /F\")",
+      "Bash(curl -s http://localhost:8080/hosts)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'호스트 {d[\\\\\"total\\\\\"]}대:'\\); [print\\(f'  {h[\\\\\"host\\\\\"]} \\({h[\\\\\"name\\\\\"]}\\)'\\) for h in d['hosts']]\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('report_text', d\\)\\)\")",
+      "Bash(curl -s \"http://localhost:8080/query?q=%EB%B0%B0%EC%B9%98%EC%84%9C%EB%B2%84+%EC%83%81%ED%83%9C+%EC%96%B4%EB%95%8C\")",
+      "Bash(curl -s http://localhost:8080/docs)",
+      "Bash(cmd //c \"taskkill /F /IM python.exe\")",
+      "Bash(curl -s http://localhost:8080/info)",
+      "Bash(cmd //c \"start http://localhost:8080\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(findstr \":3456\")",
+      "Bash(taskkill /PID 15216 /F)",
+      "Bash(cmd /c \"taskkill /PID 15216 /F\")",
+      "Bash(cmd /c \"taskkill /PID 15216 /F 2>&1\")",
+      "Bash(powershell -Command \"Stop-Process -Id 15216 -Force\")",
+      "Bash(node -e ' *)",
+      "Bash(cmd /c \"C:\\\\Users\\\\kiji1\\\\Downloads\\\\tutor-app\\\\start.bat\")",
+      "Bash(where npm *)",
+      "Bash(where node *)",
+      "Bash(powershell -Command \"Stop-Process -Id \\(Get-NetTCPConnection -LocalPort 3456 -ErrorAction SilentlyContinue\\).OwningProcess -Force -ErrorAction SilentlyContinue\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3456/)",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run dev -- --port 3456)",
+      "Bash(cscript //nologo \"C:\\\\Users\\\\kiji1\\\\Downloads\\\\tutor-app\\\\launcher.vbs\")",
+      "Bash(python3 -c ' *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\kiji1\\Desktop"
+    ]
+  }
+}

@@ -1,0 +1,126 @@
+# ============================================
+# OKX Futures Trading Agent — Production Config
+# 최적화 완료: Grid Search 3,456 조합 + Walk-Forward 검증
+# ============================================
+
+exchange:
+  name: okx
+  api_key: "7441b351-e47b-4ba9-9186-377dc9522791"
+  secret_key: "A689DFC15BFB1C6364CE3347F5184C1D"
+  passphrase: "$$Kjs394588"
+  sandbox: false                    # ← true=데모, false=실거래
+
+trading:
+  symbol: "BTC/USDT:USDT"
+  product_type: "USDT-FUTURES"
+  margin_mode: "isolated"           # isolated 권장 (cross는 전액 청산 위험)
+  position_mode: "one_way"
+
+# ── 레버리지 (Safety Margin 분석 결과) ──────────
+leverage:
+  default: 8                        # 기본 8x (safety margin 12.6x)
+  min: 5                            # 변동성 높을 때 자동 감소
+  max: 12                           # 연승 시에도 12x 초과 금지
+  volatility_adjust: true           # ATR 기반 동적 조절 활성화
+  # ── 등급별 레버리지 추가 조절 (ATR 조절 이후 叠加 적용) ──
+  grade_boost:
+    A: 2                            # A급: +2x (3개 TF 모두 + CVD + EMA50 일치)
+    B: 1                            # B급: +1x (4h + 1h 상위 2 TF)
+    C: 0                            # C급: 변동 없음
+    D: -1                           # D급: -1x (4h 단독, 신뢰도 낮음)
+    E: -1                           # E급: -1x (15m 단독)
+    none: -2                        # 다이버전스 없음 (breakout만): -2x
+
+# ── 리스크 관리 ────────────────────────────────
+risk:
+  # 포지션 사이징
+  max_position_pct: 0.8             # 증거금 최대 80% (레버리지 활용 확대)
+  risk_per_trade_pct: 0.02          # 1회 트레이드당 최대 2% 리스크
+
+  # 손절 (ATR 기반)
+  stop_loss_atr_multiplier: 1.5     # ATR(14) × 1.5
+  stop_loss_max_pct: 0.03           # 최대 손절폭 3% (안전장치)
+
+  # 익절 기본값
+  take_profit_rr_ratio: 3.0         # R:R 기본 1:3 (등급 미판별 시 폴백)
+  trailing_stop_callback: 1.5       # 고점 대비 1.5% 하락 시 청산
+  # ── 등급별 손익비 (R:R) ───────────────────────
+  grade_rr_ratios:
+    A: 4.5                          # A급: 1:4.5 — 고신뢰도, 더 오래 홀드
+    B: 3.5                          # B급: 1:3.5
+    C: 3.0                          # C급: 기본값 유지
+    D: 2.5                          # D급: 1:2.5 — 빠른 익절
+    E: 2.5                          # E급: 1:2.5 — 빠른 익절
+    none: 3.0                       # 다이버전스 없음: 기본값
+
+  # 드로다운 가드
+  daily_max_loss_pct: 0.05          # 일간 최대 손실 5% → 트레이딩 중단
+  daily_max_trades: 10              # 일간 최대 거래 횟수
+  consecutive_loss_pause: 3         # 3연패 시 쿨다운
+  cooldown_minutes: 60              # 쿨다운 시간
+
+# ── 전략 (Grid Search 최적화 결과) ─────────────
+strategy:
+  active:
+    - name: trend_follow
+      weight: 0.7                   # 주력 전략 (v4 다이버전스 로직)
+      params:
+        # ── 멀티 타임프레임 다이버전스 (15m / 1h / 4h 동시 확인) ──
+        # TF별 파라미터는 코드 내 _TF_PARAMS에 하드코딩 (TF마다 달라야 함)
+        # 여기 설정은 15m 기준 전역값
+        ema_trend: 50               # EMA50 추세 필터
+        min_bars: 60                # 15m 최소 데이터 봉 수
+        # ── RSI 필터 ──
+        rsi_period: 14
+        rsi_overbought: 70
+        rsi_oversold: 25
+        # ── 손절 ──
+        atr_sl_mult: 1.5            # ATR × 1.5 (settings.yaml의 stop_loss_atr_multiplier와 동기화)
+        # ── 구 EMA/MACD 파라미터 (지표 로깅용으로만 유지) ──
+        ema_fast: 5
+        ema_slow: 26
+        macd_fast: 8
+        macd_slow: 26
+        macd_signal: 7
+
+    - name: breakout
+      weight: 0.3                   # 보조 전략 (단독 성과 부적합)
+      params:
+        bb_period: 14               # 최적화: 기존 20 → 14
+        bb_std: 1.5                 # 최적화: 기존 2.0 → 1.5
+        fib_lookback: 100
+        volume_confirm_multiplier: 1.2  # 최적화: 기존 1.5 → 1.2
+
+  signal_threshold: 0.32           # 가중 합산 시그널 임계값 (active_weight 정규화 기준)
+  timeframes:
+    primary: "15m"                  # 진입 판단
+    confirm: "1h"                   # 추세 확인 (향후 확장용)
+    trend: "4h"                     # 대추세 확인 (향후 확장용)
+
+# ── 데이터 수집 ────────────────────────────────
+data:
+  candle_limit: 200
+  orderbook_depth: 20
+  funding_rate_check: true
+  long_short_ratio_check: true
+  oi_check: true
+
+# ── 텔레그램 알림 ──────────────────────────────
+telegram:
+  enabled: true
+  bot_token: "8644313414:AAHx-hU2zGC0ZXoM9JErUKFCBq6Ae7RkIBk"
+  chat_id: "7965044910"
+  notify_on:
+    - entry
+    - exit
+    - stop_loss
+    - error
+    - daily_summary
+    - indicators
+
+# ── 로깅 ──────────────────────────────────────
+logging:
+  level: INFO
+  file: "logs/trading.log"
+  max_size_mb: 50
+  backup_count: 10
