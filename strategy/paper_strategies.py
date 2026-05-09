@@ -212,6 +212,11 @@ class PaperStrategyB:
     진입: RSI 다이버전스 + MACD 크로스 + 엔걸핑 캔들
     SL: ATR×1.5
     TP: 2.5R
+
+    Ross Cameron 원칙:
+    - RSI 50선 근처(40~60) 제외 — 변동성 부족 구간
+    - 롱: RSI < 45 (과매도 영역)
+    - 숏: RSI > 55 (과매수 영역)
     """
 
     RSI_PERIOD = 14
@@ -223,6 +228,9 @@ class PaperStrategyB:
     TP_RR = 2.5
     # 다이버전스 탐색 룩백
     DIV_LOOKBACK = 20
+    # RSI 50선 필터: 이 범위 밖에서만 진입
+    RSI_LONG_MAX = 45   # 롱 진입 시 RSI 상한
+    RSI_SHORT_MIN = 55  # 숏 진입 시 RSI 하한
 
     def _find_divergence(
         self,
@@ -319,8 +327,8 @@ class PaperStrategyB:
 
         sl_dist = atr_val * self.SL_ATR_MULT
 
-        # ─── 롱 조건 ───
-        if bull_div and macd_bull_cross and bull_engulf:
+        # ─── 롱 조건 (RSI 과매도 영역 < 45, 50선 근처 제외) ───
+        if bull_div and macd_bull_cross and bull_engulf and rsi_val < self.RSI_LONG_MAX:
             sl = round(current_price - sl_dist, 2)
             tp = round(current_price + sl_dist * self.TP_RR, 2)
             return PaperSignal(
@@ -331,8 +339,8 @@ class PaperStrategyB:
                 reason=f"강세다이버전스+MACD크로스+엔걸핑 RSI={rsi_val:.1f}",
             )
 
-        # ─── 숏 조건 ───
-        if bear_div and macd_bear_cross and bear_engulf:
+        # ─── 숏 조건 (RSI 과매수 영역 > 55, 50선 근처 제외) ───
+        if bear_div and macd_bear_cross and bear_engulf and rsi_val > self.RSI_SHORT_MIN:
             sl = round(current_price + sl_dist, 2)
             tp = round(current_price - sl_dist * self.TP_RR, 2)
             return PaperSignal(
