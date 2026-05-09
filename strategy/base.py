@@ -144,6 +144,60 @@ def atr(
     return atr_val
 
 
+def adx(
+    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14
+) -> np.ndarray:
+    """ADX (Average Directional Index) — 추세 강도 (0~100)
+    < 25: 횡보장 (다이버전스 유리)
+    > 25: 추세장
+    """
+    n = len(closes)
+    if n < period * 2:
+        return np.full(n, np.nan)
+
+    # True Range
+    tr = np.zeros(n)
+    tr[0] = highs[0] - lows[0]
+    for i in range(1, n):
+        tr[i] = max(highs[i] - lows[i],
+                    abs(highs[i] - closes[i - 1]),
+                    abs(lows[i] - closes[i - 1]))
+
+    # +DM / -DM
+    pdm = np.zeros(n)
+    ndm = np.zeros(n)
+    for i in range(1, n):
+        up   = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        pdm[i] = up   if (up > down and up > 0)   else 0.0
+        ndm[i] = down if (down > up and down > 0) else 0.0
+
+    # Wilder smoothing
+    def _wilder(arr):
+        out = np.zeros(n)
+        out[period] = arr[1:period + 1].sum()
+        for i in range(period + 1, n):
+            out[i] = out[i - 1] - out[i - 1] / period + arr[i]
+        return out
+
+    atr_w  = _wilder(tr)
+    pdm_w  = _wilder(pdm)
+    ndm_w  = _wilder(ndm)
+
+    pdi = np.where(atr_w > 0, 100 * pdm_w / atr_w, 0.0)
+    ndi = np.where(atr_w > 0, 100 * ndm_w / atr_w, 0.0)
+
+    dx = np.where((pdi + ndi) > 0, 100 * np.abs(pdi - ndi) / (pdi + ndi), 0.0)
+
+    # ADX = Wilder smooth of DX
+    adx_val = np.zeros(n)
+    adx_val[period * 2 - 1] = dx[period:period * 2].mean()
+    for i in range(period * 2, n):
+        adx_val[i] = (adx_val[i - 1] * (period - 1) + dx[i]) / period
+    adx_val[:period * 2 - 1] = np.nan
+    return adx_val
+
+
 def fibonacci_levels(high: float, low: float) -> dict:
     """피보나치 되돌림 레벨"""
     diff = high - low

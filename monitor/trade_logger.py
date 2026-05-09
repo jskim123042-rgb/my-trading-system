@@ -125,7 +125,8 @@ class TradeLogger:
             -- ── 최적화 로그 추가 ─────────────────────────────
             bb_pct_b        REAL,           -- 진입 시 BB 위치 (0=하단, 1=상단)
             div_bars_between INTEGER,       -- 다이버전스 피벗 간 봉 수
-            early_direction INTEGER         -- 진입 후 첫 3봉 방향 일치 (1=맞음, 0=역행, NULL=미확인)
+            early_direction INTEGER,        -- 진입 후 첫 3봉 방향 일치 (1=맞음, 0=역행, NULL=미확인)
+            entry_adx       REAL            -- 진입 시 ADX (추세강도, <25=횡보, >25=추세)
         )
         """)
 
@@ -231,6 +232,7 @@ class TradeLogger:
                 "bb_pct_b REAL",
                 "div_bars_between INTEGER",
                 "early_direction INTEGER",
+                "entry_adx REAL",
                 "entry_1h_trend TEXT",
                 "entry_4h_trend TEXT",
                 "entry_rsi_1h REAL",
@@ -412,6 +414,7 @@ class TradeLogger:
         candle_body_pct: float = 0.0,
         bb_pct_b: float = 0.0,
         div_bars_between: int = 0,
+        entry_adx: float = 0.0,
     ):
         now = datetime.now(timezone.utc)
         sl_pct = abs(entry_price - stop_loss) / entry_price if entry_price else 0
@@ -433,8 +436,8 @@ class TradeLogger:
                  div_grade, div_tf_count, div_strength, cvd_confirmed,
                  entry_bb_squeeze, entry_rsi_4h,
                  score_trend, score_breakout, candle_body_pct,
-                 bb_pct_b, div_bars_between)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 bb_pct_b, div_bars_between, entry_adx)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade_id, now.isoformat(), side,
                 entry_price, amount, stop_loss, take_profit,
@@ -452,7 +455,7 @@ class TradeLogger:
                 div_grade, div_tf_count, div_strength, int(cvd_confirmed),
                 int(entry_bb_squeeze), entry_rsi_4h,
                 score_trend, score_breakout, candle_body_pct,
-                bb_pct_b, div_bars_between,
+                bb_pct_b, div_bars_between, entry_adx,
             ))
             self.conn.commit()
         except Exception as e:

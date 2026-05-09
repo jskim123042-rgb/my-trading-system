@@ -17,6 +17,8 @@ import logging
 import logging.handlers
 import sys
 import time
+
+import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,7 +27,7 @@ from core.client import BitgetClient
 from core.data_feed import DataFeed
 from core.order_manager import OrderManager, Side
 from strategy.aggregator import SignalAggregator
-from strategy.base import atr as calc_atr
+from strategy.base import atr as calc_atr, adx as calc_adx
 from risk.risk_manager import PositionSizer, DrawdownGuard, LeverageController
 from monitor.telegram_bot import TelegramNotifier
 from monitor.trade_logger import TradeLogger
@@ -534,6 +536,12 @@ class TradingAgent:
                     f"SL={signal.stop_loss} TP={signal.take_profit}"
                 )
 
+                # ── ADX 계산 (추세 강도) ──
+                _entry_adx = 0.0
+                if len(closes) >= 28:
+                    _adx_arr = calc_adx(highs, lows, closes, 14)
+                    _entry_adx = round(float(_adx_arr[-1]) if not np.isnan(_adx_arr[-1]) else 0.0, 2)
+
                 # ── BB %B 계산 (진입 시 BB 내 위치 0=하단 1=상단) ──
                 _bb_pct_b = 0.5
                 try:
@@ -631,6 +639,7 @@ class TradingAgent:
                         candle_body_pct=_candle_body_pct,
                         bb_pct_b=round(_bb_pct_b, 4),
                         div_bars_between=signal.div_bars_between,
+                        entry_adx=_entry_adx,
                     )
                     await self.notifier.notify_entry(
                         side=trade.side,
