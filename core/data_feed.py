@@ -127,6 +127,10 @@ class DataFeed:
         candles = self.candles.get(timeframe, [])
         return np.array([c[5] for c in candles], dtype=float)
 
+    def get_opens(self, timeframe: str = "15m") -> np.ndarray:
+        candles = self.candles.get(timeframe, [])
+        return np.array([c[1] for c in candles], dtype=float)
+
     def get_current_price(self) -> float:
         """현재 가격 — WebSocket ticker 우선, REST 폴백"""
         if self.ticker:

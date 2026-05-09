@@ -193,6 +193,28 @@ class TradeLogger:
         )
         """)
 
+        # ── paper_trades: 모의 거래 로그 ─────────────────
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy        TEXT NOT NULL,      -- 'A' | 'B'
+            side            TEXT NOT NULL,      -- 'long' | 'short'
+            open_ts         TEXT NOT NULL,
+            close_ts        TEXT,
+            entry_price     REAL,
+            exit_price      REAL,
+            stop_loss       REAL,
+            take_profit     REAL,
+            pnl_pct         REAL,               -- 레버리지 미적용 단순 가격 변화율
+            exit_reason     TEXT,               -- 'tp' | 'sl' | 'open'
+            entry_rsi       REAL,
+            entry_adx       REAL,
+            entry_bb_pct_b  REAL,
+            duration_min    REAL,
+            reason          TEXT                -- 진입 이유 텍스트
+        )
+        """)
+
         self.conn.commit()
         self._migrate()
 
@@ -813,6 +835,93 @@ class TradeLogger:
                         f"기대={d['expectancy_r']:+.3f}R"
                     )
         return "\n".join(lines)
+
+    # ── 모의 거래 기록 ────────────────────────────────────
+    def log_paper_trade_open(
+        self,
+        strategy: str,
+        side: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float,
+        entry_rsi: float = 0.0,
+        entry_adx: float = 0.0,
+        entry_bb_pct_b: float = 0.5,
+        reason: str = "",
+    ) -> int:
+        """모의 진입 기록, 생성된 row id 반환"""
+        now = datetime.now(timezone.utc)
+        try:
+            cur = self.conn.execute("""
+            INSERT INTO paper_trades
+                (strategy, side, open_ts, entry_price, stop_loss, take_profit,
+                 entry_rsi, entry_adx, entry_bb_pct_b, reason)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (
+                strategy, side, now.isoformat(),
+                entry_price, stop_loss, take_profit,
+                entry_rsi, entry_adx, entry_bb_pct_b, reason,
+            ))
+            self.conn.commit()
+            return cur.lastrowid
+        except Exception as e:
+            logger.error(f"모의 거래 진입 저장 실패: {e}")
+            return -1
+
+    def log_paper_trade_close(
+        self,
+        row_id: int,
+        exit_price: float,
+        pnl_pct: float,
+        exit_reason: str,
+        duration_min: float,
+    ):
+        """모의 청산 업데이트"""
+        now = datetime.now(timezone.utc)
+        try:
+            self.conn.execute("""
+            UPDATE paper_trades
+            SET close_ts=?, exit_price=?, pnl_pct=?, exit_reason=?, duration_min=?
+            WHERE id=?
+            """, (
+                now.isoformat(), exit_price, pnl_pct,
+                exit_reason, duration_min, row_id,
+            ))
+            self.conn.commit()
+        except Exception as e:
+            logger.error(f"모의 거래 청산 업데이트 실패: {e}")
+
+    def get_paper_stats(self, strategy: str = None) -> dict:
+        """모의 거래 승률/손익비 조회"""
+        where = "WHERE close_ts IS NOT NULL"
+        params: list = []
+        if strategy:
+            where += " AND strategy=?"
+            params.append(strategy)
+        try:
+            rows = self.conn.execute(
+                f"SELECT pnl_pct, exit_reason FROM paper_trades {where}", params
+            ).fetchall()
+        except Exception:
+            return {}
+        if not rows:
+            return {"total": 0}
+        wins = [r for r in rows if r[0] is not None and r[0] > 0]
+        losses = [r for r in rows if r[0] is not None and r[0] <= 0]
+        total = len(rows)
+        avg_win = sum(r[0] for r in wins) / len(wins) if wins else 0.0
+        avg_loss = sum(r[0] for r in losses) / len(losses) if losses else 0.0
+        pf = abs(avg_win / avg_loss) if avg_loss else float("inf")
+        return {
+            "strategy": strategy or "전체",
+            "total": total,
+            "wins": len(wins),
+            "losses": len(losses),
+            "win_rate": round(len(wins) / total, 4) if total else 0,
+            "avg_win_pct": round(avg_win, 4),
+            "avg_loss_pct": round(avg_loss, 4),
+            "profit_factor": round(pf, 3),
+        }
 
     def close(self):
         self.conn.close()

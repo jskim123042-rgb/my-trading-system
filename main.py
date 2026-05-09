@@ -32,6 +32,7 @@ from risk.risk_manager import PositionSizer, DrawdownGuard, LeverageController
 from monitor.telegram_bot import TelegramNotifier
 from monitor.trade_logger import TradeLogger
 from strategy.stoch_logger import StochSignalLogger
+from paper_trader import PaperTrader
 
 
 def setup_logging(config: Config):
@@ -80,6 +81,7 @@ class TradingAgent:
         self.notifier = TelegramNotifier(config)
         self.trade_logger = TradeLogger()
         self.stoch_logger = StochSignalLogger("data/stoch_signals.csv")
+        self.paper_trader = PaperTrader(self.trade_logger)
 
         # 상태
         self._running = False
@@ -374,6 +376,12 @@ class TradingAgent:
                     logger.info(f"⏸️ 트레이딩 일시중지: {reason}")
                     await asyncio.sleep(30)
                     continue
+
+                # ── 모의 트레이딩 (실거래 영향 없음) ──
+                try:
+                    self.paper_trader.tick(self.data_feed, current_price)
+                except Exception as _pe:
+                    logger.debug(f"모의 트레이딩 오류: {_pe}")
 
                 # ── 시그널 평가 ──
                 signal = self.aggregator.evaluate(self.data_feed)
