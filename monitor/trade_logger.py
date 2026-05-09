@@ -206,6 +206,8 @@ class TradeLogger:
             stop_loss       REAL,
             take_profit     REAL,
             pnl_pct         REAL,               -- 레버리지 미적용 단순 가격 변화율
+            sim_pnl_usdt    REAL,               -- 실제 잔고 기준 모의 손익 (USDT)
+            balance_at_entry REAL,              -- 진입 시점 실제 계좌 잔고
             exit_reason     TEXT,               -- 'tp' | 'sl' | 'open'
             entry_rsi       REAL,
             entry_adx       REAL,
@@ -292,6 +294,10 @@ class TradeLogger:
                 "score_trend REAL",
                 "score_breakout REAL",
                 "candle_body_pct REAL",
+            ],
+            "paper_trades": [
+                "sim_pnl_usdt REAL",
+                "balance_at_entry REAL",
             ],
         }
         # shadow_trades는 신규 테이블이라 CREATE IF NOT EXISTS로 충분 (ALTER 불필요)
@@ -848,6 +854,7 @@ class TradeLogger:
         entry_adx: float = 0.0,
         entry_bb_pct_b: float = 0.5,
         reason: str = "",
+        balance_at_entry: float = 0.0,
     ) -> int:
         """모의 진입 기록, 생성된 row id 반환"""
         now = datetime.now(timezone.utc)
@@ -855,12 +862,12 @@ class TradeLogger:
             cur = self.conn.execute("""
             INSERT INTO paper_trades
                 (strategy, side, open_ts, entry_price, stop_loss, take_profit,
-                 entry_rsi, entry_adx, entry_bb_pct_b, reason)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+                 entry_rsi, entry_adx, entry_bb_pct_b, reason, balance_at_entry)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 strategy, side, now.isoformat(),
                 entry_price, stop_loss, take_profit,
-                entry_rsi, entry_adx, entry_bb_pct_b, reason,
+                entry_rsi, entry_adx, entry_bb_pct_b, reason, balance_at_entry,
             ))
             self.conn.commit()
             return cur.lastrowid
@@ -875,16 +882,19 @@ class TradeLogger:
         pnl_pct: float,
         exit_reason: str,
         duration_min: float,
+        balance_at_entry: float = 0.0,
     ):
-        """모의 청산 업데이트"""
+        """모의 청산 업데이트 — sim_pnl_usdt = balance × pnl_pct (실전과 동일 시드 기준)"""
         now = datetime.now(timezone.utc)
+        sim_pnl = round(balance_at_entry * pnl_pct, 4) if balance_at_entry > 0 else None
         try:
             self.conn.execute("""
             UPDATE paper_trades
-            SET close_ts=?, exit_price=?, pnl_pct=?, exit_reason=?, duration_min=?
+            SET close_ts=?, exit_price=?, pnl_pct=?, sim_pnl_usdt=?,
+                exit_reason=?, duration_min=?
             WHERE id=?
             """, (
-                now.isoformat(), exit_price, pnl_pct,
+                now.isoformat(), exit_price, pnl_pct, sim_pnl,
                 exit_reason, duration_min, row_id,
             ))
             self.conn.commit()
@@ -892,7 +902,7 @@ class TradeLogger:
             logger.error(f"모의 거래 청산 업데이트 실패: {e}")
 
     def get_paper_stats(self, strategy: str = None) -> dict:
-        """모의 거래 승률/손익비 조회"""
+        """모의 거래 승률/손익비/수익률 조회"""
         where = "WHERE close_ts IS NOT NULL"
         params: list = []
         if strategy:
@@ -900,7 +910,7 @@ class TradeLogger:
             params.append(strategy)
         try:
             rows = self.conn.execute(
-                f"SELECT pnl_pct, exit_reason FROM paper_trades {where}", params
+                f"SELECT pnl_pct, exit_reason, sim_pnl_usdt FROM paper_trades {where}", params
             ).fetchall()
         except Exception:
             return {}
@@ -912,6 +922,7 @@ class TradeLogger:
         avg_win = sum(r[0] for r in wins) / len(wins) if wins else 0.0
         avg_loss = sum(r[0] for r in losses) / len(losses) if losses else 0.0
         pf = abs(avg_win / avg_loss) if avg_loss else float("inf")
+        total_sim_pnl = sum(r[2] for r in rows if r[2] is not None)
         return {
             "strategy": strategy or "전체",
             "total": total,
@@ -921,6 +932,7 @@ class TradeLogger:
             "avg_win_pct": round(avg_win, 4),
             "avg_loss_pct": round(avg_loss, 4),
             "profit_factor": round(pf, 3),
+            "total_sim_pnl_usdt": round(total_sim_pnl, 2),  # 실제 잔고 기준 누적 모의 손익
         }
 
     def close(self):

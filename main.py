@@ -379,7 +379,8 @@ class TradingAgent:
 
                 # ── 모의 트레이딩 (실거래 영향 없음) ──
                 try:
-                    self.paper_trader.tick(self.data_feed, current_price)
+                    _paper_balance = self.client.get_balance()["total"]
+                    self.paper_trader.tick(self.data_feed, current_price, _paper_balance)
                 except Exception as _pe:
                     logger.debug(f"모의 트레이딩 오류: {_pe}")
 

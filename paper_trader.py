@@ -28,6 +28,7 @@ class PaperPosition:
     stop_loss: float
     take_profit: float
     open_time: float    # time.time()
+    balance_at_entry: float = 0.0
 
 
 class PaperTrader:
@@ -42,7 +43,7 @@ class PaperTrader:
         self._pos_b: Optional[PaperPosition] = None
 
     # ── 매 틱 호출 ────────────────────────────────────
-    def tick(self, data_feed, current_price: float):
+    def tick(self, data_feed, current_price: float, balance: float = 0.0):
         """메인 루프에서 5초마다 호출 — 진입 체크 + 청산 체크"""
         if current_price <= 0:
             return
@@ -56,10 +57,10 @@ class PaperTrader:
             return
 
         self._process_strategy(
-            "A", self._pos_a, opens, closes, highs, lows, current_price,
+            "A", self._pos_a, opens, closes, highs, lows, current_price, balance,
         )
         self._process_strategy(
-            "B", self._pos_b, opens, closes, highs, lows, current_price,
+            "B", self._pos_b, opens, closes, highs, lows, current_price, balance,
         )
 
     # ── 전략별 처리 ───────────────────────────────────
@@ -69,6 +70,7 @@ class PaperTrader:
         pos: Optional[PaperPosition],
         opens, closes, highs, lows,
         current_price: float,
+        balance: float = 0.0,
     ):
         # 1) 보유 포지션 있으면 청산 체크
         if pos is not None:
@@ -100,6 +102,7 @@ class PaperTrader:
             entry_adx=signal.adx_val,
             entry_bb_pct_b=signal.bb_pct_b,
             reason=signal.reason,
+            balance_at_entry=balance,
         )
         if row_id < 0:
             return
@@ -112,6 +115,7 @@ class PaperTrader:
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
             open_time=time.time(),
+            balance_at_entry=balance,
         )
         if name == "A":
             self._pos_a = new_pos
@@ -153,6 +157,7 @@ class PaperTrader:
             pnl_pct=round(pnl_pct, 6),
             exit_reason=outcome,
             duration_min=round(duration_min, 2),
+            balance_at_entry=pos.balance_at_entry,
         )
 
         logger.info(
