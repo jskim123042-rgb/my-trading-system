@@ -206,7 +206,9 @@ class TradeLogger:
             stop_loss       REAL,
             take_profit     REAL,
             pnl_pct         REAL,               -- 레버리지 미적용 단순 가격 변화율
-            sim_pnl_usdt    REAL,               -- 실제 잔고 기준 모의 손익 (USDT)
+            sim_pnl_usdt    REAL,               -- 실제 잔고 기준 모의 손익 (슬리피지+펀딩비 차감)
+            sim_slippage_usdt REAL,             -- 모의 슬리피지 비용 (진입+청산 각 0.05%)
+            sim_funding_usdt  REAL,             -- 모의 펀딩비 비용 (실제 funding_rate × 보유시간)
             balance_at_entry REAL,              -- 진입 시점 실제 계좌 잔고
             exit_reason     TEXT,               -- 'tp' | 'sl' | 'open'
             entry_rsi       REAL,
@@ -297,6 +299,8 @@ class TradeLogger:
             ],
             "paper_trades": [
                 "sim_pnl_usdt REAL",
+                "sim_slippage_usdt REAL",
+                "sim_funding_usdt REAL",
                 "balance_at_entry REAL",
             ],
         }
@@ -883,18 +887,25 @@ class TradeLogger:
         exit_reason: str,
         duration_min: float,
         balance_at_entry: float = 0.0,
+        slippage_pct: float = 0.0,
+        funding_pct: float = 0.0,
     ):
-        """모의 청산 업데이트 — sim_pnl_usdt = balance × pnl_pct (실전과 동일 시드 기준)"""
+        """모의 청산 업데이트 — 슬리피지+펀딩비 차감 후 실질 손익 계산"""
         now = datetime.now(timezone.utc)
-        sim_pnl = round(balance_at_entry * pnl_pct, 4) if balance_at_entry > 0 else None
+        net_pnl_pct = pnl_pct - slippage_pct - funding_pct
+        sim_pnl      = round(balance_at_entry * net_pnl_pct, 4) if balance_at_entry > 0 else None
+        sim_slip     = round(balance_at_entry * slippage_pct, 4) if balance_at_entry > 0 else None
+        sim_fund     = round(balance_at_entry * funding_pct, 4) if balance_at_entry > 0 else None
         try:
             self.conn.execute("""
             UPDATE paper_trades
             SET close_ts=?, exit_price=?, pnl_pct=?, sim_pnl_usdt=?,
+                sim_slippage_usdt=?, sim_funding_usdt=?,
                 exit_reason=?, duration_min=?
             WHERE id=?
             """, (
                 now.isoformat(), exit_price, pnl_pct, sim_pnl,
+                sim_slip, sim_fund,
                 exit_reason, duration_min, row_id,
             ))
             self.conn.commit()
@@ -910,7 +921,8 @@ class TradeLogger:
             params.append(strategy)
         try:
             rows = self.conn.execute(
-                f"SELECT pnl_pct, exit_reason, sim_pnl_usdt FROM paper_trades {where}", params
+                f"SELECT pnl_pct, exit_reason, sim_pnl_usdt, "
+                f"sim_slippage_usdt, sim_funding_usdt FROM paper_trades {where}", params
             ).fetchall()
         except Exception:
             return {}
@@ -922,7 +934,9 @@ class TradeLogger:
         avg_win = sum(r[0] for r in wins) / len(wins) if wins else 0.0
         avg_loss = sum(r[0] for r in losses) / len(losses) if losses else 0.0
         pf = abs(avg_win / avg_loss) if avg_loss else float("inf")
-        total_sim_pnl = sum(r[2] for r in rows if r[2] is not None)
+        total_sim_pnl  = sum(r[2] for r in rows if r[2] is not None)
+        total_slip     = sum(r[3] for r in rows if r[3] is not None)
+        total_fund     = sum(r[4] for r in rows if r[4] is not None)
         return {
             "strategy": strategy or "전체",
             "total": total,
@@ -932,7 +946,9 @@ class TradeLogger:
             "avg_win_pct": round(avg_win, 4),
             "avg_loss_pct": round(avg_loss, 4),
             "profit_factor": round(pf, 3),
-            "total_sim_pnl_usdt": round(total_sim_pnl, 2),  # 실제 잔고 기준 누적 모의 손익
+            "total_sim_pnl_usdt": round(total_sim_pnl, 2),   # 슬리피지+펀딩비 차감 후 실질 손익
+            "total_slippage_usdt": round(total_slip, 2),      # 슬리피지 비용 합계
+            "total_funding_usdt": round(total_fund, 2),       # 펀딩비 비용 합계
         }
 
     def close(self):

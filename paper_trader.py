@@ -19,6 +19,10 @@ from monitor.trade_logger import TradeLogger
 logger = logging.getLogger("paper_trader")
 
 
+SLIPPAGE_PER_SIDE = 0.0005   # OKX 테이커 수수료 0.05% (진입+청산 = 0.10%)
+FUNDING_INTERVAL_H = 8       # OKX 펀딩비 주기 (8시간)
+
+
 @dataclass
 class PaperPosition:
     row_id: int
@@ -29,6 +33,7 @@ class PaperPosition:
     take_profit: float
     open_time: float    # time.time()
     balance_at_entry: float = 0.0
+    funding_rate: float = 0.0   # 진입 시점 실제 funding rate
 
 
 class PaperTrader:
@@ -52,15 +57,16 @@ class PaperTrader:
         closes = data_feed.get_closes("15m")
         highs = data_feed.get_highs("15m")
         lows = data_feed.get_lows("15m")
+        funding_rate = getattr(data_feed, "funding_rate", 0.0)
 
         if len(closes) < 40:
             return
 
         self._process_strategy(
-            "A", self._pos_a, opens, closes, highs, lows, current_price, balance,
+            "A", self._pos_a, opens, closes, highs, lows, current_price, balance, funding_rate,
         )
         self._process_strategy(
-            "B", self._pos_b, opens, closes, highs, lows, current_price, balance,
+            "B", self._pos_b, opens, closes, highs, lows, current_price, balance, funding_rate,
         )
 
     # ── 전략별 처리 ───────────────────────────────────
@@ -71,6 +77,7 @@ class PaperTrader:
         opens, closes, highs, lows,
         current_price: float,
         balance: float = 0.0,
+        funding_rate: float = 0.0,
     ):
         # 1) 보유 포지션 있으면 청산 체크
         if pos is not None:
@@ -116,6 +123,7 @@ class PaperTrader:
             take_profit=signal.take_profit,
             open_time=time.time(),
             balance_at_entry=balance,
+            funding_rate=funding_rate,
         )
         if name == "A":
             self._pos_a = new_pos
@@ -151,6 +159,18 @@ class PaperTrader:
 
         duration_min = (time.time() - pos.open_time) / 60
 
+        # 슬리피지: 진입 + 청산 각 0.05% = 총 0.10%
+        slippage_pct = SLIPPAGE_PER_SIDE * 2
+
+        # 펀딩비: 실제 funding_rate × 보유한 8시간 주기 수
+        # 롱이면 양수 funding_rate = 비용, 숏이면 반대
+        funding_periods = (duration_min / 60) / FUNDING_INTERVAL_H
+        if pos.side == "long":
+            funding_pct = pos.funding_rate * funding_periods
+        else:
+            funding_pct = -pos.funding_rate * funding_periods  # 숏은 펀딩비 수취
+        funding_pct = max(funding_pct, 0.0)  # 수취는 0으로 처리 (보수적 계산)
+
         self.logger.log_paper_trade_close(
             row_id=pos.row_id,
             exit_price=exit_price,
@@ -158,11 +178,15 @@ class PaperTrader:
             exit_reason=outcome,
             duration_min=round(duration_min, 2),
             balance_at_entry=pos.balance_at_entry,
+            slippage_pct=round(slippage_pct, 6),
+            funding_pct=round(funding_pct, 6),
         )
 
+        net_pnl = pnl_pct - slippage_pct - funding_pct
         logger.info(
             f"📝 모의청산 [{pos.strategy}] {pos.side.upper()} "
             f"{'✅TP' if outcome == 'tp' else '❌SL'} "
-            f"손익={pnl_pct:+.2%} 보유={duration_min:.0f}분"
+            f"손익={pnl_pct:+.2%} 슬리피지={slippage_pct:.2%} "
+            f"펀딩={funding_pct:.3%} 실질={net_pnl:+.2%} 보유={duration_min:.0f}분"
         )
         return True
