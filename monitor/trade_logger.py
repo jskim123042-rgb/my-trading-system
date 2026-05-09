@@ -912,6 +912,33 @@ class TradeLogger:
         except Exception as e:
             logger.error(f"모의 거래 청산 업데이트 실패: {e}")
 
+    def load_open_paper_positions(self) -> list[dict]:
+        """재시작 시 미청산 모의 포지션 복구 (close_ts IS NULL)"""
+        try:
+            rows = self.conn.execute("""
+                SELECT id, strategy, side, entry_price, stop_loss, take_profit,
+                       open_ts, balance_at_entry
+                FROM paper_trades
+                WHERE close_ts IS NULL
+                ORDER BY open_ts ASC
+            """).fetchall()
+        except Exception as e:
+            logger.error(f"모의 포지션 복구 실패: {e}")
+            return []
+        result = []
+        for r in rows:
+            result.append({
+                "row_id": r[0],
+                "strategy": r[1],
+                "side": r[2],
+                "entry_price": r[3] or 0.0,
+                "stop_loss": r[4] or 0.0,
+                "take_profit": r[5] or 0.0,
+                "open_ts": r[6] or "",
+                "balance_at_entry": r[7] or 0.0,
+            })
+        return result
+
     def get_paper_stats(self, strategy: str = None) -> dict:
         """모의 거래 승률/손익비/수익률 조회"""
         where = "WHERE close_ts IS NOT NULL"

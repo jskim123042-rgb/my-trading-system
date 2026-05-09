@@ -11,6 +11,7 @@
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 from strategy.paper_strategies import PaperStrategyA, PaperStrategyB, PaperSignal
@@ -46,6 +47,41 @@ class PaperTrader:
         # 각 전략당 하나의 모의 포지션만 유지
         self._pos_a: Optional[PaperPosition] = None
         self._pos_b: Optional[PaperPosition] = None
+        self._restore_positions()
+
+    # ── 재시작 복구 ───────────────────────────────────
+    def _restore_positions(self):
+        """봇 재시작 시 DB의 미청산 모의 포지션 복구"""
+        open_positions = self.logger.load_open_paper_positions()
+        if not open_positions:
+            return
+        for p in open_positions:
+            # open_ts → Unix timestamp 변환
+            try:
+                dt = datetime.fromisoformat(p["open_ts"].replace("Z", "+00:00"))
+                open_time = dt.timestamp()
+            except Exception:
+                open_time = time.time()
+
+            pos = PaperPosition(
+                row_id=p["row_id"],
+                strategy=p["strategy"],
+                side=p["side"],
+                entry_price=p["entry_price"],
+                stop_loss=p["stop_loss"],
+                take_profit=p["take_profit"],
+                open_time=open_time,
+                balance_at_entry=p["balance_at_entry"],
+                funding_rate=0.0,  # 재시작 시 알 수 없으므로 0으로 복구 (펀딩비 보수적 처리)
+            )
+            if p["strategy"] == "A" and self._pos_a is None:
+                self._pos_a = pos
+            elif p["strategy"] == "B" and self._pos_b is None:
+                self._pos_b = pos
+            logger.info(
+                f"♻️ 모의 포지션 복구 [{p['strategy']}] {p['side'].upper()} "
+                f"진입가={p['entry_price']:.1f} SL={p['stop_loss']:.1f} TP={p['take_profit']:.1f}"
+            )
 
     # ── 매 틱 호출 ────────────────────────────────────
     def tick(self, data_feed, current_price: float, balance: float = 0.0):
