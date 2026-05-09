@@ -250,6 +250,85 @@ class TelegramNotifier:
         )
         await self.send(msg)
 
+    async def notify_paper_entry(self, strategy: str, side: str, entry: float,
+                                  sl: float, tp: float, reason: str):
+        """모의 진입 알림"""
+        if "paper" not in self.notify_on:
+            return
+        sl_pct = abs(entry - sl) / entry * 100
+        tp_pct = abs(tp - entry) / entry * 100
+        rr = tp_pct / sl_pct if sl_pct > 0 else 0
+        emoji = "🟢" if side == "long" else "🔴"
+        msg = (
+            f"{emoji} <b>[모의{strategy}] {side.upper()} 진입</b>\n"
+            f"진입가: ${entry:,.1f}\n"
+            f"손절:  ${sl:,.1f}  (-{sl_pct:.2f}%)\n"
+            f"익절:  ${tp:,.1f}  (+{tp_pct:.2f}%)  R:R 1:{rr:.1f}\n"
+            f"근거:  {reason}"
+        )
+        await self.send(msg)
+
+    async def notify_paper_exit(self, strategy: str, side: str, entry: float,
+                                 exit_price: float, pnl_pct: float, net_pnl_pct: float,
+                                 outcome: str, duration_min: float,
+                                 sim_pnl_usdt: float = 0.0):
+        """모의 청산 알림"""
+        if "paper" not in self.notify_on:
+            return
+        emoji = "✅" if outcome == "tp" else "❌"
+        outcome_str = "익절" if outcome == "tp" else "손절"
+        pnl_line = f"실질손익: <b>{net_pnl_pct:+.2%}</b>"
+        if sim_pnl_usdt:
+            pnl_line += f"  ({sim_pnl_usdt:+.2f} USDT)"
+        msg = (
+            f"{emoji} <b>[모의{strategy}] {side.upper()} {outcome_str}</b>\n"
+            f"진입가: ${entry:,.1f}  →  청산가: ${exit_price:,.1f}\n"
+            f"가격변동: {pnl_pct:+.2%}  (슬리피지+펀딩 차감 후: {net_pnl_pct:+.2%})\n"
+            f"{pnl_line}\n"
+            f"보유:   {duration_min:.0f}분"
+        )
+        await self.send(msg)
+
+    async def notify_paper_daily_summary(self, stats_a: dict, stats_b: dict,
+                                          real_stats: dict, balance: float = 0.0):
+        """일간 모의매매 요약 (실전과 비교)"""
+        if "daily_summary" not in self.notify_on:
+            return
+
+        def _fmt(s: dict) -> str:
+            if not s or s.get("total", 0) == 0:
+                return "  거래 없음"
+            pf = s.get("profit_factor", 0)
+            pf_str = f"{pf:.2f}" if pf != float("inf") else "∞"
+            pnl = s.get("total_sim_pnl_usdt", 0)
+            slip = s.get("total_slippage_usdt", 0)
+            fund = s.get("total_funding_usdt", 0)
+            return (
+                f"  {s['total']}회  {s['wins']}승 {s['losses']}패  "
+                f"승률 <b>{s['win_rate']:.1%}</b>  PF {pf_str}\n"
+                f"  실질손익: <b>{pnl:+.2f} USDT</b>  "
+                f"(슬리피지 -{slip:.2f} / 펀딩 -{fund:.2f})"
+            )
+
+        real_pf = real_stats.get("profit_factor", 0)
+        real_pf_str = f"{real_pf:.2f}" if real_pf != float("inf") else "∞"
+        real_pnl = real_stats.get("total_pnl_usdt", 0)
+        real_wr = real_stats.get("win_rate", 0)
+        real_total = real_stats.get("total", 0)
+
+        bal_line = f"잔고: <b>${balance:,.2f} USDT</b>\n\n" if balance > 0 else ""
+        msg = (
+            f"📊 <b>일간 전략 비교 리포트</b>\n\n"
+            f"{bal_line}"
+            f"<b>🔵 실전 (다이버전스+BB)</b>\n"
+            f"  {real_total}회  {real_stats.get('wins',0)}승 {real_stats.get('losses',0)}패  "
+            f"승률 <b>{real_wr:.1%}</b>  PF {real_pf_str}\n"
+            f"  손익: <b>{real_pnl:+.2f} USDT</b>\n\n"
+            f"<b>🟡 모의 A (RSI+BB+반전캔들)</b>\n{_fmt(stats_a)}\n\n"
+            f"<b>🟠 모의 B (RSI다이버전스+MACD)</b>\n{_fmt(stats_b)}"
+        )
+        await self.send(msg)
+
     async def notify_daily_summary(self, stats: dict, balance: float = 0.0):
         if "daily_summary" not in self.notify_on:
             return

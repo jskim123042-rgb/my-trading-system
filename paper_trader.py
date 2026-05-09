@@ -16,6 +16,7 @@ from typing import Optional
 
 from strategy.paper_strategies import PaperStrategyA, PaperStrategyB, PaperSignal
 from monitor.trade_logger import TradeLogger
+from monitor.telegram_bot import TelegramNotifier
 
 logger = logging.getLogger("paper_trader")
 
@@ -40,8 +41,9 @@ class PaperPosition:
 class PaperTrader:
     """Strategy A / B 모의 포지션 관리"""
 
-    def __init__(self, trade_logger: TradeLogger):
+    def __init__(self, trade_logger: TradeLogger, notifier: Optional[TelegramNotifier] = None):
         self.logger = trade_logger
+        self.notifier = notifier
         self.strategy_a = PaperStrategyA()
         self.strategy_b = PaperStrategyB()
         # 각 전략당 하나의 모의 포지션만 유지
@@ -171,6 +173,13 @@ class PaperTrader:
             f"진입={signal.entry_price:.1f} SL={signal.stop_loss:.1f} TP={signal.take_profit:.1f} "
             f"| {signal.reason}"
         )
+        if self.notifier:
+            import asyncio
+            asyncio.ensure_future(self.notifier.notify_paper_entry(
+                strategy=name, side=signal.side,
+                entry=signal.entry_price, sl=signal.stop_loss, tp=signal.take_profit,
+                reason=signal.reason,
+            ))
 
     # ── 청산 체크 ─────────────────────────────────────
     def _check_exit(self, pos: PaperPosition, current_price: float) -> bool:
@@ -219,10 +228,20 @@ class PaperTrader:
         )
 
         net_pnl = pnl_pct - slippage_pct - funding_pct
+        sim_pnl_usdt = round(pos.balance_at_entry * net_pnl, 4) if pos.balance_at_entry > 0 else 0.0
         logger.info(
             f"📝 모의청산 [{pos.strategy}] {pos.side.upper()} "
             f"{'✅TP' if outcome == 'tp' else '❌SL'} "
             f"손익={pnl_pct:+.2%} 슬리피지={slippage_pct:.2%} "
             f"펀딩={funding_pct:.3%} 실질={net_pnl:+.2%} 보유={duration_min:.0f}분"
         )
+        if self.notifier:
+            import asyncio
+            asyncio.ensure_future(self.notifier.notify_paper_exit(
+                strategy=pos.strategy, side=pos.side,
+                entry=pos.entry_price, exit_price=exit_price,
+                pnl_pct=pnl_pct, net_pnl_pct=net_pnl,
+                outcome=outcome, duration_min=duration_min,
+                sim_pnl_usdt=sim_pnl_usdt,
+            ))
         return True

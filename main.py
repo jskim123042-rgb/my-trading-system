@@ -81,7 +81,7 @@ class TradingAgent:
         self.notifier = TelegramNotifier(config)
         self.trade_logger = TradeLogger()
         self.stoch_logger = StochSignalLogger("data/stoch_signals.csv")
-        self.paper_trader = PaperTrader(self.trade_logger)
+        self.paper_trader = PaperTrader(self.trade_logger, self.notifier)
 
         # 상태
         self._running = False
@@ -765,13 +765,19 @@ class TradingAgent:
             balance = self.client.get_balance()
             self.drawdown_guard.reset_daily(balance["total"])
 
-            # 일간 요약 발송
+            # 일간 요약 발송 (실전 + 모의 비교)
             stats = self.order_mgr.get_stats()
             try:
                 _daily_bal = self.client.get_balance()["total"]
             except Exception:
                 _daily_bal = 0.0
             asyncio.ensure_future(self.notifier.notify_daily_summary(stats, balance=_daily_bal))
+            asyncio.ensure_future(self.notifier.notify_paper_daily_summary(
+                stats_a=self.trade_logger.get_paper_stats("A"),
+                stats_b=self.trade_logger.get_paper_stats("B"),
+                real_stats=self.trade_logger.get_cumulative_stats(),
+                balance=_daily_bal,
+            ))
 
             # R:R 최적화 리포트 (누적 20건 이상일 때만)
             try:
