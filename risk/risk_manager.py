@@ -68,13 +68,13 @@ class PositionSizer:
         max_value = max_margin * leverage
         position_value = min(position_value, max_value)
 
-        # BTC 수량으로 변환 (OKX 최소단위 0.01 BTC)
-        CONTRACT_SIZE = 0.01  # OKX BTC-USDT-SWAP 1계약 = 0.01 BTC
+        # BTC 수량으로 변환 (OKX 최소단위 0.001 BTC)
+        CONTRACT_SIZE = 0.001  # OKX BTC-USDT-SWAP 1계약 = 0.001 BTC
         amount_raw = position_value / entry_price
-        # 0.01 단위로 올림 (목표 리스크를 충족하도록 올림 처리)
+        # 0.001 단위로 올림 (목표 리스크를 충족하도록 올림 처리)
         import math
         amount = math.ceil(amount_raw / CONTRACT_SIZE) * CONTRACT_SIZE
-        amount = round(amount, 4)
+        amount = round(amount, 3)
 
         # 최소 1계약 보장
         amount = max(amount, CONTRACT_SIZE)
@@ -83,8 +83,8 @@ class PositionSizer:
         used_margin = amount * entry_price / leverage
         if used_margin > max_margin:
             amount = math.floor(amount_raw / CONTRACT_SIZE) * CONTRACT_SIZE
-            amount = max(round(amount, 4), CONTRACT_SIZE)
-            used_margin = amount * entry_price / leverage
+            amount = max(round(amount, 3), CONTRACT_SIZE)
+            used_margin = round(amount * entry_price / leverage, 4)
 
         nominal = amount * entry_price
         actual_risk = nominal * sl_pct   # SL 터질 때 실제 손실 USDT
