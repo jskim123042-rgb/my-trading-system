@@ -94,6 +94,8 @@ class TradingAgent:
         self._last_signal = None  # 마지막 신호 평가 결과 (지표 알림용)
         self._indicator_log_interval = 900  # 15분마다 지표 현황 로그
         self._early_check_trade_id: str = ""  # early_direction 체크 완료된 trade id
+        self._tp_cooldown_until: float = 0.0  # TP 후 재진입 쿨다운 만료 시각
+        self._tp_cooldown_min: int = 30        # TP 후 쿨다운 시간 (분)
         self._last_market_fetch_time = 0
         self._market_fetch_interval = 60   # 60초마다 OI/롱숏 REST 조회
         self._last_vol_profile_time = 0
@@ -350,6 +352,13 @@ class TradingAgent:
                             exit_atr=_exit_atr,
                             exit_vol_ratio=_exit_vol_ratio,
                         )
+                        # ── TP 후 쿨다운 설정 ──
+                        if closed.exit_reason in ("tp_server", "tp"):
+                            self._tp_cooldown_until = time.time() + self._tp_cooldown_min * 60
+                            logger.info(
+                                f"⏳ TP 쿨다운 시작 — {self._tp_cooldown_min}분간 재진입 차단"
+                            )
+
                         # ── 누적 통계 (DB 기반, 재시작해도 유지) ──
                         cumulative = self.trade_logger.get_cumulative_stats()
                         _bal_after = self.client.get_balance()
@@ -375,6 +384,14 @@ class TradingAgent:
                 if not can_trade:
                     logger.info(f"⏸️ 트레이딩 일시중지: {reason}")
                     await asyncio.sleep(30)
+                    continue
+
+                # ── TP 쿨다운 체크 ──
+                if time.time() < self._tp_cooldown_until:
+                    remaining = (self._tp_cooldown_until - time.time()) / 60
+                    if now - self._last_status_log_time >= self._status_log_interval:
+                        logger.info(f"⏳ TP 쿨다운 중 — 재진입 차단 (잔여 {remaining:.0f}분)")
+                    await asyncio.sleep(1)
                     continue
 
                 # ── 모의 트레이딩 (실거래 영향 없음) ──
