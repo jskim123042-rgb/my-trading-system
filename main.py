@@ -94,8 +94,6 @@ class TradingAgent:
         self._last_signal = None  # 마지막 신호 평가 결과 (지표 알림용)
         self._indicator_log_interval = 900  # 15분마다 지표 현황 로그
         self._early_check_trade_id: str = ""  # early_direction 체크 완료된 trade id
-        self._tp_cooldown_until: float = 0.0  # TP 후 재진입 쿨다운 만료 시각
-        self._tp_cooldown_min: int = 30        # TP 후 쿨다운 시간 (분)
         self._last_market_fetch_time = 0
         self._market_fetch_interval = 60   # 60초마다 OI/롱숏 REST 조회
         self._last_vol_profile_time = 0
@@ -352,13 +350,6 @@ class TradingAgent:
                             exit_atr=_exit_atr,
                             exit_vol_ratio=_exit_vol_ratio,
                         )
-                        # ── TP 후 쿨다운 설정 ──
-                        if closed.exit_reason in ("tp_server", "tp"):
-                            self._tp_cooldown_until = time.time() + self._tp_cooldown_min * 60
-                            logger.info(
-                                f"⏳ TP 쿨다운 시작 — {self._tp_cooldown_min}분간 재진입 차단"
-                            )
-
                         # ── 누적 통계 (DB 기반, 재시작해도 유지) ──
                         cumulative = self.trade_logger.get_cumulative_stats()
                         _bal_after = self.client.get_balance()
@@ -384,14 +375,6 @@ class TradingAgent:
                 if not can_trade:
                     logger.info(f"⏸️ 트레이딩 일시중지: {reason}")
                     await asyncio.sleep(30)
-                    continue
-
-                # ── TP 쿨다운 체크 ──
-                if time.time() < self._tp_cooldown_until:
-                    remaining = (self._tp_cooldown_until - time.time()) / 60
-                    if now - self._last_status_log_time >= self._status_log_interval:
-                        logger.info(f"⏳ TP 쿨다운 중 — 재진입 차단 (잔여 {remaining:.0f}분)")
-                    await asyncio.sleep(1)
                     continue
 
                 # ── 모의 트레이딩 (실거래 영향 없음) ──
@@ -589,6 +572,26 @@ class TradingAgent:
                             _bb_pct_b = (current_price - _bb_lower[-1]) / _bb_range
                 except Exception:
                     pass
+
+                # ── 진입 품질 필터: 거래량 + OI 확인 ──
+                _entry_vol_ratio = _vol_stats.get("vol_ratio", 0.0)
+                _entry_oi_chg    = self.data_feed.get_oi_change_pct()
+                _vol_confirmed   = _entry_vol_ratio >= 1.5   # 거래량 평균의 1.5배 이상
+                _oi_confirmed    = _entry_oi_chg >= 0        # OI 감소하지 않음 (신규 포지션 유입)
+
+                if not _vol_confirmed and not _oi_confirmed:
+                    logger.info(
+                        f"🚫 진입 차단 — 거래량({_entry_vol_ratio:.2f}x) 부족 "
+                        f"+ OI({_entry_oi_chg:+.2f}%) 감소 → 페이크 가능성"
+                    )
+                    await asyncio.sleep(1)
+                    continue
+
+                logger.info(
+                    f"✅ 진입 품질 확인 — "
+                    f"거래량 {'✅' if _vol_confirmed else '⚠️'}{_entry_vol_ratio:.2f}x | "
+                    f"OI {'✅' if _oi_confirmed else '⚠️'}{_entry_oi_chg:+.2f}%"
+                )
 
                 # ── 포지션 사이징 ──
                 stats = self.order_mgr.get_stats()
